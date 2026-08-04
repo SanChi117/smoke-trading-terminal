@@ -1,0 +1,24 @@
+[Unit]
+Description=Smoke Trading Terminal Paper API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smoke-terminal
+Group=smoke-terminal
+WorkingDirectory=/opt/smoke-terminal
+Environment=SMOKE_TERMINAL_RUNTIME=/opt/smoke-terminal/runtime
+EnvironmentFile=-/opt/smoke-terminal/.env.terminal
+ExecStart=/opt/smoke-terminal/.venv/bin/python scripts/run_terminal_api.py --host 127.0.0.1 --port 8095
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/smoke-terminal/runtime
+
+[Install]
+WantedBy=multi-user.target
+
