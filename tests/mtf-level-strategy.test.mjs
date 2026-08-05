@@ -139,24 +139,32 @@ test("higher-timeframe zones are reproducible and labeled", () => {
   assert.ok(zones.every((zone) => Number.isInteger(zone.touches) && zone.touches >= 0));
 });
 
-test("full analysis exposes the five-stage decision trace", () => {
+test("full analysis exposes the five-stage decision trace without a fallback entry", () => {
   const { bundle, now } = syntheticLongBundle();
   const analysis = analyzeLevelFlow("TESTUSDT", bundle, now);
   assert.equal(analysis.version, "SMOKE_LEVEL_FLOW_V1");
   assert.deepEqual(analysis.trace.map((step) => step.id), ["context", "level", "approach", "reaction", "entry"]);
   assert.ok(analysis.zones.length > 0);
-  assert.ok(["ready", "watch"].includes(analysis.state), analysis.reason);
+  assert.ok(["ready", "watch", "blocked"].includes(analysis.state));
   if (analysis.state === "ready") {
-    assert.equal(analysis.side, "long");
+    assert.ok(analysis.activeZone);
+    assert.equal(analysis.activeZone.timeframe, "1d");
+    assert.equal(analysis.activeZone.source, "swing");
     assert.ok(analysis.entry !== null && analysis.stop !== null && analysis.target !== null);
     assert.ok((analysis.rr ?? 0) >= 1.8);
+  } else {
+    assert.equal(analysis.entry, null);
+    assert.equal(analysis.stop, null);
+    assert.equal(analysis.target, null);
+    assert.ok(analysis.blockers.length > 0);
   }
 });
 
-test("backtest only enters after a complete level-flow signal", () => {
+test("backtest only enters after a complete daily-swing level-flow signal", () => {
   const { bundle } = syntheticLongBundle();
   const result = runLevelBacktest("TESTUSDT", bundle, { testDays: 20 });
   assert.equal(result.version, "SMOKE_LEVEL_FLOW_V1");
-  assert.ok(result.trades.every((trade) => trade.zoneLabel.includes("1D")));
+  assert.ok(result.trades.every((trade) => trade.zoneTimeframe === "1d"));
+  assert.ok(result.trades.every((trade) => trade.zoneSource === "swing"));
   assert.ok(Number.isFinite(result.metrics.netR));
 });
