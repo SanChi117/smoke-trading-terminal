@@ -1,0 +1,31 @@
+name: level-flow-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/components/LevelChart.tsx"
+      - "app/components/WorkbenchTerminal.tsx"
+      - "app/components/WorkbenchTerminal.module.css"
+      - "app/lib/level/**"
+      - "app/lib/mtf-level-strategy.ts"
+      - "app/lib/binance-level-client.ts"
+      - "app/page.tsx"
+      - "tests/mtf-level-strategy.test.mjs"
+      - "tsconfig.json"
+      - ".github/workflows/level-flow-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: npm
+      - run: npm ci
+      - run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs
+      - run: npm run lint
+      - run: npm run build
