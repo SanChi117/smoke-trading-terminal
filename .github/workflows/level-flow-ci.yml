@@ -12,6 +12,7 @@ on:
       - "app/lib/binance-level-client.ts"
       - "app/page.tsx"
       - "tests/mtf-level-strategy.test.mjs"
+      - "tests/binance-level-client.test.mjs"
       - "tsconfig.json"
       - ".github/workflows/level-flow-ci.yml"
   workflow_dispatch:
@@ -26,6 +27,6 @@ jobs:
           node-version: "22.16.0"
           cache: npm
       - run: npm ci
-      - run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs
+      - run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - run: npm run lint
       - run: npm run build
