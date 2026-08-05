@@ -6,16 +6,14 @@ on:
     paths:
       - "app/lib/level/**"
       - "app/lib/binance-level-client.ts"
-      - "scripts/run_level_flow_validation.mjs"
-      - "scripts/run_level_flow_validation_weekly.mjs"
-      - "scripts/analyze_level_flow_variants.mjs"
+      - "scripts/run_level_flow_wide_validation.mjs"
       - ".github/workflows/level-flow-validation.yml"
   workflow_dispatch:
 
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,15 +25,13 @@ jobs:
       - run: npm ci
       - name: Strategy unit tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
-      - name: Run strict 1W/1D 90 and 180 day validation
-        run: node --experimental-strip-types scripts/run_level_flow_validation_weekly.mjs
-      - name: Analyze structural gate variants
-        run: node --experimental-strip-types scripts/analyze_level_flow_variants.mjs
+      - name: Run fixed-universe 365-day validation
+        run: node --experimental-strip-types scripts/run_level_flow_wide_validation.mjs
       - name: Upload validation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-level-flow-validation
+          name: smoke-level-flow-wide-validation
           path: runtime/level-flow-validation/
           if-no-files-found: warn
           retention-days: 30
