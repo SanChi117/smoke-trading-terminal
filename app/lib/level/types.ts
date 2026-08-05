@@ -80,7 +80,7 @@ export type AuxiliaryMetrics = {
 
 export type FourHourRoute = {
   bias: Bias;
-  state: "approaching" | "inside" | "moving_away" | "invalidated" | "no_level";
+  state: "approaching" | "inside" | "departing" | "moving_away" | "invalidated" | "no_level";
   distanceAtr: number | null;
   distanceDecreasing: boolean;
   detail: string;
