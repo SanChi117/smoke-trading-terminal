@@ -20,6 +20,8 @@ jobs:
         with:
           node-version: "22.16.0"
           cache: npm
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
       - run: npm ci
       - name: Strategy unit tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
