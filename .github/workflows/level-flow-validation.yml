@@ -1,0 +1,35 @@
+name: level-flow-validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/lib/level/**"
+      - "app/lib/binance-level-client.ts"
+      - "scripts/run_level_flow_validation.mjs"
+      - ".github/workflows/level-flow-validation.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.16.0"
+          cache: npm
+      - run: npm ci
+      - name: Strategy unit tests
+        run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
+      - name: Run 90 and 180 day validation
+        run: node --experimental-strip-types scripts/run_level_flow_validation.mjs
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-level-flow-validation
+          path: runtime/level-flow-validation/
+          if-no-files-found: warn
+          retention-days: 30
