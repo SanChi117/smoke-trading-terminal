@@ -1,5 +1,5 @@
-import TerminalClient from "./components/TerminalClient";
+import WorkbenchTerminal from "./components/WorkbenchTerminal";
 
 export default function Home() {
-  return <TerminalClient />;
+  return <WorkbenchTerminal />;
 }
