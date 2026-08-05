@@ -7,6 +7,7 @@ on:
       - "app/lib/level/**"
       - "app/lib/binance-level-client.ts"
       - "scripts/run_level_flow_validation.mjs"
+      - "scripts/run_level_flow_validation_weekly.mjs"
       - ".github/workflows/level-flow-validation.yml"
   workflow_dispatch:
 
@@ -25,8 +26,8 @@ jobs:
       - run: npm ci
       - name: Strategy unit tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
-      - name: Run 90 and 180 day validation
-        run: node --experimental-strip-types scripts/run_level_flow_validation.mjs
+      - name: Run strict 1W/1D 90 and 180 day validation
+        run: node --experimental-strip-types scripts/run_level_flow_validation_weekly.mjs
       - name: Upload validation report
         if: always()
         uses: actions/upload-artifact@v4
