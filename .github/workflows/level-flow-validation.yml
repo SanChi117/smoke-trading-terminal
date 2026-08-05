@@ -34,10 +34,10 @@ jobs:
         run: npx eslint app/lib/level scripts/run_level_flow_logic_audit.mjs tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - name: Production build
         run: npm run build
-      - name: BTC ETH 60-day logic audit
+      - name: BTC ETH 90-day logic audit
         env:
           AUDIT_SYMBOLS: BTCUSDT,ETHUSDT
-          AUDIT_DAYS: "60"
+          AUDIT_DAYS: "90"
         run: node --experimental-strip-types scripts/run_level_flow_logic_audit.mjs
       - name: Upload logic audit report
         if: always()
