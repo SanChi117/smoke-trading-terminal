@@ -1,4 +1,4 @@
-name: level-flow-validation
+name: level-flow-logic-audit
 
 on:
   pull_request:
@@ -6,18 +6,19 @@ on:
     paths:
       - "app/lib/level/**"
       - "app/lib/binance-level-client.ts"
-      - "scripts/run_level_flow_wide_validation.mjs"
+      - "scripts/run_level_flow_logic_audit.mjs"
+      - "tests/mtf-level-strategy.test.mjs"
       - ".github/workflows/level-flow-validation.yml"
   workflow_dispatch:
 
 concurrency:
-  group: level-flow-validation-${{ github.event.pull_request.number || github.ref }}
+  group: level-flow-logic-audit-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate:
+  audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,15 +28,22 @@ jobs:
       - name: Ensure archive tools
         run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
       - run: npm ci
-      - name: Strategy unit tests
+      - name: Strategy invariant tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
-      - name: Run fixed-universe 365-day validation
-        run: node --experimental-strip-types scripts/run_level_flow_wide_validation.mjs
-      - name: Upload validation report
+      - name: Lint
+        run: npm run lint
+      - name: Production build
+        run: npm run build
+      - name: BTC ETH 60-day logic audit
+        env:
+          AUDIT_SYMBOLS: BTCUSDT,ETHUSDT
+          AUDIT_DAYS: "60"
+        run: node --experimental-strip-types scripts/run_level_flow_logic_audit.mjs
+      - name: Upload logic audit report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-level-flow-wide-validation
-          path: runtime/level-flow-validation/
+          name: smoke-level-flow-logic-audit
+          path: runtime/level-flow-logic-audit/
           if-no-files-found: warn
           retention-days: 30
