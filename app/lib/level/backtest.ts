@@ -1,4 +1,4 @@
-import type { Bias, Candle, Reaction, Side, Timeframe, TimeframeBundle } from "./types.ts";
+import type { Bias, Candle, Reaction, Side, Timeframe, TimeframeBundle, ZoneSource } from "./types.ts";
 import { TF_MS } from "./math.ts";
 import { analyzeLevelFlow } from "./analysis.ts";
 import { structureBias } from "./structure.ts";
@@ -11,7 +11,7 @@ export type LevelBacktestTrade = {
   exitTime: number;
   zoneLabel: string;
   zoneTimeframe: Timeframe;
-  zoneSource: "order_block" | "swing" | "fvg";
+  zoneSource: ZoneSource;
   zoneScore: number;
   zoneTouches: number;
   weeklyBias: Bias;
@@ -33,7 +33,7 @@ export type LevelBacktestTrade = {
 };
 
 export type LevelBacktestResult = {
-  version: "SMOKE_LEVEL_FLOW_V1";
+  version: "SMOKE_LEVEL_FLOW_V3_AUDIT";
   trades: LevelBacktestTrade[];
   metrics: {
     trades: number;
@@ -47,11 +47,11 @@ export type LevelBacktestResult = {
 };
 
 const HISTORY_LIMITS: Record<Timeframe, number> = {
-  "1w": 64,
-  "1d": 140,
-  "4h": 180,
-  "15m": 140,
-  "5m": 160,
+  "1w": 80,
+  "1d": 260,
+  "4h": 420,
+  "15m": 220,
+  "5m": 260,
 };
 
 function closedEndIndex(candles: Candle[], timeframe: Timeframe, now: number): number {
@@ -102,19 +102,19 @@ export function runLevelBacktest(
   const trades: LevelBacktestTrade[] = [];
   let nextAllowedIndex = 0;
 
-  for (let index = 100; index < candles15.length - 1; index += 1) {
+  for (let index = 220; index < candles15.length - 1; index += 1) {
     const signalCandle = candles15[index];
     if (signalCandle.time < startTime || index < nextAllowedIndex) continue;
     const signalCloseTime = signalCandle.time + TF_MS["15m"];
     const signalBundle = bundleAt(raw, signalCloseTime);
     const analysis = analyzeLevelFlow(symbol, signalBundle, signalCloseTime + 1);
     if (
-      analysis.state !== "ready" ||
-      !analysis.side ||
-      analysis.entry === null ||
-      analysis.stop === null ||
-      analysis.target === null ||
-      !analysis.activeZone
+      analysis.state !== "ready"
+      || !analysis.side
+      || analysis.entry === null
+      || analysis.stop === null
+      || analysis.target === null
+      || !analysis.activeZone
     ) continue;
 
     const next = candles15[index + 1];
@@ -129,7 +129,7 @@ export function runLevelBacktest(
     const risk = Math.abs(entry - stop);
     if (risk <= 0) continue;
     const actualRR = Math.abs(target - entry) / risk;
-    if (actualRR < 1.4) continue;
+    if (actualRR < 1.6) continue;
 
     const timeStopIndex = Math.min(candles15.length - 1, index + 1 + maxHoldBars);
     let exit = candles15[timeStopIndex].close;
@@ -145,7 +145,6 @@ export function runLevelBacktest(
       const candle = candles15[futureIndex];
       const stopHit = analysis.side === "long" ? candle.low <= stop : candle.high >= stop;
       const targetHit = analysis.side === "long" ? candle.high >= target : candle.low <= target;
-      // Conservative same-candle resolution: stop-loss always wins.
       if (stopHit) {
         exit = stop;
         exitTime = candle.time;
@@ -214,7 +213,7 @@ export function runLevelBacktest(
   }
 
   return {
-    version: "SMOKE_LEVEL_FLOW_V1",
+    version: "SMOKE_LEVEL_FLOW_V3_AUDIT",
     trades,
     metrics: {
       trades: trades.length,
