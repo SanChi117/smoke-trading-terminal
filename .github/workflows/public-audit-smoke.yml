@@ -1,0 +1,33 @@
+name: public-audit-smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/public-audit-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for public site sync and verify audit route
+        shell: bash
+        run: |
+          set -u
+          url="https://smoke-terminal.kriptabuchcko117.chatgpt.site/audit"
+          for attempt in $(seq 1 20); do
+            status=$(curl --location --silent --show-error --max-time 30 --output /tmp/audit.html --write-out "%{http_code}" "$url" || true)
+            echo "attempt=$attempt status=$status bytes=$(wc -c </tmp/audit.html 2>/dev/null || echo 0)"
+            if [[ "$status" == "200" ]] \
+              && grep -q "Golden Case Audit" /tmp/audit.html \
+              && grep -q "Как стратегия видит сделку от уровня" /tmp/audit.html; then
+              echo "PUBLIC_AUDIT_OK"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Public /audit did not expose the merged page in time."
+          head -c 1200 /tmp/audit.html 2>/dev/null || true
+          exit 1
