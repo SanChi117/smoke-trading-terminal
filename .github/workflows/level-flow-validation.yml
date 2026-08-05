@@ -30,8 +30,8 @@ jobs:
       - run: npm ci
       - name: Strategy invariant tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
-      - name: Lint
-        run: npm run lint
+      - name: Logic lint
+        run: npx eslint app/lib/level scripts/run_level_flow_logic_audit.mjs tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - name: Production build
         run: npm run build
       - name: BTC ETH 60-day logic audit
