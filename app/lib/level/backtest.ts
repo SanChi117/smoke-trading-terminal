@@ -1,6 +1,7 @@
-import type { Candle, Side, Timeframe, TimeframeBundle } from "./types.ts";
+import type { Bias, Candle, Reaction, Side, Timeframe, TimeframeBundle } from "./types.ts";
 import { TF_MS } from "./math.ts";
 import { analyzeLevelFlow } from "./analysis.ts";
+import { structureBias } from "./structure.ts";
 
 export type LevelBacktestTrade = {
   symbol: string;
@@ -9,6 +10,18 @@ export type LevelBacktestTrade = {
   entryTime: number;
   exitTime: number;
   zoneLabel: string;
+  zoneTimeframe: Timeframe;
+  zoneSource: "order_block" | "swing" | "fvg";
+  zoneScore: number;
+  zoneTouches: number;
+  weeklyBias: Bias;
+  dailyBias: Bias;
+  phase4hBias: Bias;
+  rangePosition: "premium" | "discount" | "equilibrium" | null;
+  reactionType: Reaction["type"];
+  plannedRR: number;
+  stopPct: number;
+  entryGapR: number;
   entry: number;
   stop: number;
   target: number;
@@ -93,7 +106,8 @@ export function runLevelBacktest(
     const signalCandle = candles15[index];
     if (signalCandle.time < startTime || index < nextAllowedIndex) continue;
     const signalCloseTime = signalCandle.time + TF_MS["15m"];
-    const analysis = analyzeLevelFlow(symbol, bundleAt(raw, signalCloseTime), signalCloseTime + 1);
+    const signalBundle = bundleAt(raw, signalCloseTime);
+    const analysis = analyzeLevelFlow(symbol, signalBundle, signalCloseTime + 1);
     if (
       analysis.state !== "ready" ||
       !analysis.side ||
@@ -105,7 +119,9 @@ export function runLevelBacktest(
 
     const next = candles15[index + 1];
     const plannedRisk = Math.abs(analysis.entry - analysis.stop);
-    if (plannedRisk <= 0 || Math.abs(next.open - analysis.entry) / plannedRisk > 0.35) continue;
+    if (plannedRisk <= 0) continue;
+    const entryGapR = Math.abs(next.open - analysis.entry) / plannedRisk;
+    if (entryGapR > 0.35) continue;
 
     const entry = next.open;
     const stop = analysis.stop;
@@ -158,6 +174,18 @@ export function runLevelBacktest(
       entryTime: next.time,
       exitTime,
       zoneLabel: analysis.activeZone.label,
+      zoneTimeframe: analysis.activeZone.timeframe,
+      zoneSource: analysis.activeZone.source,
+      zoneScore: analysis.activeZone.score,
+      zoneTouches: analysis.activeZone.touches,
+      weeklyBias: analysis.weeklyBias,
+      dailyBias: analysis.dailyBias,
+      phase4hBias: structureBias(signalBundle["4h"], "4h", 3),
+      rangePosition: analysis.range?.position ?? null,
+      reactionType: analysis.reaction.type,
+      plannedRR: actualRR,
+      stopPct: riskPct,
+      entryGapR,
       entry,
       stop,
       target,
