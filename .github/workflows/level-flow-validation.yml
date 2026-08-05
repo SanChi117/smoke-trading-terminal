@@ -7,6 +7,7 @@ on:
       - "app/lib/level/**"
       - "app/lib/binance-level-client.ts"
       - "scripts/run_level_flow_logic_audit.mjs"
+      - "scripts/run_level_flow_logic_audit_window.mjs"
       - "tests/mtf-level-strategy.test.mjs"
       - ".github/workflows/level-flow-validation.yml"
   workflow_dispatch:
@@ -31,19 +32,26 @@ jobs:
       - name: Strategy invariant tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - name: Logic lint
-        run: npx eslint app/lib/level scripts/run_level_flow_logic_audit.mjs tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
+        run: npx eslint app/lib/level scripts/run_level_flow_logic_audit.mjs scripts/run_level_flow_logic_audit_window.mjs tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - name: Production build
         run: npm run build
-      - name: BTC ETH 90-day logic audit
+      - name: BTC ETH current 90-day logic audit
         env:
           AUDIT_SYMBOLS: BTCUSDT,ETHUSDT
           AUDIT_DAYS: "90"
         run: node --experimental-strip-types scripts/run_level_flow_logic_audit.mjs
-      - name: Upload logic audit report
+      - name: BTC ETH historical long-coverage audit
+        env:
+          AUDIT_SYMBOLS: BTCUSDT,ETHUSDT
+          AUDIT_DAYS: "60"
+          AUDIT_END: "2025-09-30T23:55:00.000Z"
+          AUDIT_LABEL: "2025-09"
+        run: node --experimental-strip-types scripts/run_level_flow_logic_audit_window.mjs
+      - name: Upload logic audit reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: smoke-level-flow-logic-audit
-          path: runtime/level-flow-logic-audit/
+          path: runtime/level-flow-logic-audit*/
           if-no-files-found: warn
           retention-days: 30
