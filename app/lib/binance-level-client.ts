@@ -4,7 +4,9 @@ const REST = "https://fapi.binance.com";
 const WS = "wss://fstream.binance.com/ws";
 export const INTERVALS: Record<Timeframe, string> = { "1w": "1w", "1d": "1d", "4h": "4h", "15m": "15m", "5m": "5m" };
 
-function parseKline(row: unknown[]): Candle { return { time: Number(row[0]), open: Number(row[1]), high: Number(row[2]), low: Number(row[3]), close: Number(row[4]), volume: Number(row[5]) }; }
+function parseKline(row: unknown[]): Candle {
+  return { time: Number(row[0]), open: Number(row[1]), high: Number(row[2]), low: Number(row[3]), close: Number(row[4]), volume: Number(row[5]) };
+}
 
 export async function fetchKlines(symbol: string, timeframe: Timeframe, options: { limit?: number; startTime?: number; endTime?: number; signal?: AbortSignal } = {}): Promise<Candle[]> {
   const params = new URLSearchParams({ symbol: symbol.toUpperCase(), interval: INTERVALS[timeframe], limit: String(Math.min(1500, options.limit ?? 500)) });
@@ -16,24 +18,38 @@ export async function fetchKlines(symbol: string, timeframe: Timeframe, options:
   return payload.map(parseKline).filter((candle) => Object.values(candle).every(Number.isFinite));
 }
 
-export async function fetchKlinesRange(symbol: string, timeframe: Timeframe, startTime: number, endTime: number, signal?: AbortSignal): Promise<Candle[]> {
+export async function fetchKlinesRange(
+  symbol: string,
+  timeframe: Timeframe,
+  startTime: number,
+  endTime: number,
+  signal?: AbortSignal,
+): Promise<Candle[]> {
   const rows: Candle[] = [];
-  let cursor = startTime;
-  for (let page = 0; page < 20 && cursor < endTime; page += 1) {
-    const batch = await fetchKlines(symbol, timeframe, { limit: 1500, startTime: cursor, endTime, signal });
+  let cursorEnd = endTime;
+  for (let page = 0; page < 24 && cursorEnd >= startTime; page += 1) {
+    const batch = await fetchKlines(symbol, timeframe, { limit: 1500, startTime, endTime: cursorEnd, signal });
     if (!batch.length) break;
-    rows.push(...batch);
-    const next = batch.at(-1)!.time + 1;
-    if (next <= cursor) break;
-    cursor = next;
-    if (batch.length < 1500) break;
+    rows.unshift(...batch);
+    const firstOpenTime = batch[0].time;
+    if (firstOpenTime <= startTime || batch.length < 1500) break;
+    const nextEnd = firstOpenTime - 1;
+    if (nextEnd >= cursorEnd) break;
+    cursorEnd = nextEnd;
   }
-  return rows.filter((candle, index, all) => all.findIndex((item) => item.time === candle.time) === index).sort((a, b) => a.time - b.time);
+  return rows
+    .filter((candle) => candle.time >= startTime && candle.time <= endTime)
+    .filter((candle, index, all) => all.findIndex((item) => item.time === candle.time) === index)
+    .sort((a, b) => a.time - b.time);
 }
 
 export async function fetchStrategyBundle(symbol: string, signal?: AbortSignal): Promise<TimeframeBundle> {
   const [weekly, daily, fourH, fifteenM, fiveM] = await Promise.all([
-    fetchKlines(symbol, "1w", { limit: 160, signal }), fetchKlines(symbol, "1d", { limit: 360, signal }), fetchKlines(symbol, "4h", { limit: 700, signal }), fetchKlines(symbol, "15m", { limit: 900, signal }), fetchKlines(symbol, "5m", { limit: 1000, signal }),
+    fetchKlines(symbol, "1w", { limit: 160, signal }),
+    fetchKlines(symbol, "1d", { limit: 360, signal }),
+    fetchKlines(symbol, "4h", { limit: 700, signal }),
+    fetchKlines(symbol, "15m", { limit: 900, signal }),
+    fetchKlines(symbol, "5m", { limit: 1000, signal }),
   ]);
   return { "1w": weekly, "1d": daily, "4h": fourH, "15m": fifteenM, "5m": fiveM };
 }
