@@ -72,7 +72,7 @@ npm run build
 npm run test:python
 ```
 
-The standard Node test suite includes rendered HTML checks, paper-journal lifecycle tests and paper-review gate tests.
+The standard Node test suite includes rendered HTML checks, paper-journal lifecycle tests and paper-review gate tests. Pull requests must pass the repository CI checks before merge.
 
 ## Legacy research baseline
 
