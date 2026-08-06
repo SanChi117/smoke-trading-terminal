@@ -1,9 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { comparisonRow, compareMetrics, regressionVerdict } from "./regression-report-core.mjs";
 
 const OUTPUT_DIR = path.resolve("runtime/regime-gate-validation");
+const CACHE_DIR = path.resolve("runtime/binance-vision-cache");
 const SOURCE_REPORT = path.join(OUTPUT_DIR, "regime-gate-validation.json");
 
 const run = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/run_regime_gate_validation.mjs"], {
@@ -12,8 +14,44 @@ const run = spawnSync(process.execPath, ["--experimental-strip-types", "scripts/
 });
 if (run.status !== 0) process.exit(run.status ?? 1);
 
+async function datasetSnapshot() {
+  const names = (await fs.readdir(CACHE_DIR)).filter((name) => name.endsWith(".zip")).sort();
+  return Promise.all(names.map(async (name) => {
+    const bytes = await fs.readFile(path.join(CACHE_DIR, name));
+    return {
+      name,
+      bytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    };
+  }));
+}
+
+function summarizeTrades(trades) {
+  const sorted = [...trades].sort((a, b) => Date.parse(a.entryTime) - Date.parse(b.entryTime));
+  const netR = sorted.reduce((sum, trade) => sum + trade.netR, 0);
+  const profit = sorted.filter((trade) => trade.netR > 0).reduce((sum, trade) => sum + trade.netR, 0);
+  const loss = Math.abs(sorted.filter((trade) => trade.netR < 0).reduce((sum, trade) => sum + trade.netR, 0));
+  let equity = 0;
+  let peak = 0;
+  let maxDrawdownR = 0;
+  for (const trade of sorted) {
+    equity += trade.netR;
+    peak = Math.max(peak, equity);
+    maxDrawdownR = Math.max(maxDrawdownR, peak - equity);
+  }
+  return {
+    trades: sorted.length,
+    netR,
+    expectancyR: sorted.length > 0 ? netR / sorted.length : 0,
+    winrate: sorted.length > 0 ? sorted.filter((trade) => trade.netR > 0).length / sorted.length * 100 : 0,
+    profitFactor: loss > 0 ? profit / loss : profit > 0 ? null : 0,
+    maxDrawdownR,
+  };
+}
+
 const source = JSON.parse(await fs.readFile(SOURCE_REPORT, "utf8"));
-const windowRows = source.results.map((row) => comparisonRow(row.id, row.baseline, row.candidate));
+const dataset = await datasetSnapshot();
+const windowRows = source.results.map((row) => comparisonRow(row.id, row.baseline, row.candidate, dataset, dataset));
 
 function dimensionRows(dimension) {
   const keys = new Set();
@@ -38,43 +76,21 @@ function dimensionRows(dimension) {
   });
 }
 
-const symbolRows = Object.keys(source.overall.baseline.perSymbol ?? source.results[0]?.baseline.perSymbol ?? {})
-  .sort()
-  .map((symbol) => {
-    const baselineTrades = source.results.flatMap((row) => row.baseline.perSymbol?.[symbol]?.trades ?? []);
-    const candidateTrades = source.results.flatMap((row) => row.candidate.perSymbol?.[symbol]?.trades ?? []);
-    const baseline = source.results.reduce((acc, row) => {
-      const metrics = row.baseline.perSymbol?.[symbol]?.metrics;
-      if (!metrics) return acc;
-      acc.trades += metrics.trades;
-      acc.netR += metrics.netR;
-      return acc;
-    }, { trades: 0, netR: 0 });
-    const candidate = source.results.reduce((acc, row) => {
-      const metrics = row.candidate.perSymbol?.[symbol]?.metrics;
-      if (!metrics) return acc;
-      acc.trades += metrics.trades;
-      acc.netR += metrics.netR;
-      return acc;
-    }, { trades: 0, netR: 0 });
-    const normalize = (value, trades) => ({
-      trades: value.trades,
-      netR: value.netR,
-      expectancyR: value.trades > 0 ? value.netR / value.trades : 0,
-      winrate: trades.length > 0 ? trades.filter((trade) => trade.netR > 0).length / trades.length * 100 : 0,
-      profitFactor: 0,
-      maxDrawdownR: 0,
-    });
-    const baselineMetrics = normalize(baseline, baselineTrades);
-    const candidateMetrics = normalize(candidate, candidateTrades);
-    return {
-      id: symbol,
-      baseline: baselineMetrics,
-      candidate: candidateMetrics,
-      delta: compareMetrics(baselineMetrics, candidateMetrics),
-      ...regressionVerdict({ sameInputs: true, baseline: baselineMetrics, candidate: candidateMetrics }),
-    };
-  });
+const symbols = new Set(source.results.flatMap((row) => [
+  ...Object.keys(row.baseline.perSymbol ?? {}),
+  ...Object.keys(row.candidate.perSymbol ?? {}),
+]));
+const symbolRows = [...symbols].sort().map((symbol) => {
+  const baseline = summarizeTrades(source.results.flatMap((row) => row.baseline.trades.filter((trade) => trade.symbol === symbol)));
+  const candidate = summarizeTrades(source.results.flatMap((row) => row.candidate.trades.filter((trade) => trade.symbol === symbol)));
+  return {
+    id: symbol,
+    baseline,
+    candidate,
+    delta: compareMetrics(baseline, candidate),
+    ...regressionVerdict({ sameInputs: true, baseline, candidate }),
+  };
+});
 
 const overallSameInputs = windowRows.every((row) => row.sameInputs);
 const overallVerdict = regressionVerdict({
@@ -91,6 +107,11 @@ const report = {
   verdict: overallVerdict.verdict,
   reasons: overallVerdict.reasons,
   sameInputs: overallSameInputs,
+  dataset: {
+    files: dataset.length,
+    bytes: dataset.reduce((sum, file) => sum + file.bytes, 0),
+    sha256: windowRows[0]?.baselineManifest.sha256 ?? null,
+  },
   overall: {
     baseline: source.overall.baseline.metrics,
     candidate: source.overall.candidate.metrics,
@@ -110,6 +131,8 @@ const lines = [
   "",
   `- Verdict: **${report.verdict}**`,
   `- Identical input manifests: **${report.sameInputs ? "YES" : "NO"}**`,
+  `- Dataset: ${report.dataset.files} cached Binance files · ${report.dataset.bytes} bytes`,
+  `- Dataset fingerprint: \`${report.dataset.sha256}\``,
   `- Source validation verdict: **${report.sourceVerdict}**`,
   ...report.reasons.map((reason) => `- Review reason: ${reason}`),
   "",
@@ -138,4 +161,4 @@ const lines = [
   "",
 ];
 await fs.writeFile(path.join(OUTPUT_DIR, "regression-report.md"), `${lines.join("\n")}\n`);
-console.log(`SMOKE_LEVEL_FLOW_REGRESSION=${JSON.stringify({ verdict: report.verdict, sameInputs: report.sameInputs, reasons: report.reasons })}`);
+console.log(`SMOKE_LEVEL_FLOW_REGRESSION=${JSON.stringify({ verdict: report.verdict, sameInputs: report.sameInputs, reasons: report.reasons, datasetFiles: dataset.length })}`);
