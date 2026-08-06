@@ -194,22 +194,22 @@ export function runLevelBacktest(
       if (exitMode === "structure_managed") {
         const now = candle.time + TF_MS["15m"] + 1;
         const currentBundle = bundleAt(raw, now);
-        const bias15 = structureBias(currentBundle["15m"], "15m", 3);
+        const latestClosed4h = currentBundle["4h"].at(-1);
         const bias4h = structureBias(currentBundle["4h"], "4h", 3);
         const heldBars = futureIndex - (index + 1) + 1;
-        const against15 = bias15 === oppositeBias(analysis.side);
         const against4h = bias4h === oppositeBias(analysis.side);
-        const lostSourceZone = analysis.side === "long"
-          ? candle.close < analysis.activeZone.low
-          : candle.close > analysis.activeZone.high;
-        const structureInvalidated = lostSourceZone && against15;
+        const sourceZoneBrokenOn4h = latestClosed4h
+          ? analysis.side === "long"
+            ? latestClosed4h.close < analysis.activeZone.low
+            : latestClosed4h.close > analysis.activeZone.high
+          : false;
+        const structureInvalidated = sourceZoneBrokenOn4h && against4h;
         const noProgress = heldBars >= noProgressBars
           && maxMfeR < 0.45
           && grossR < 0
-          && against15;
+          && against4h;
         const protectProfit = maxMfeR >= 1
           && grossR < 0.35
-          && against15
           && against4h;
 
         if (structureInvalidated || noProgress || protectProfit) {
