@@ -116,6 +116,21 @@ function resolveAfterExit(trade, candles, exitIndex) {
   };
 }
 
+function interpretationFor(trade, mfeR, progressPct, postExit) {
+  if (trade.reason === "take_profit") return "objective_target_reached";
+  if (trade.reason === "stop_loss") return mfeR < 0.5 ? "reaction_failed_early" : "profit_gave_back_to_stop";
+  if (trade.reason === "structure_invalidation") return "confirmed_4h_source_invalidation";
+  if (trade.reason === "no_progress") return "no_progress_with_4h_reversal";
+  if (trade.reason === "protect_profit") return "profit_protected_after_4h_reversal";
+  if (trade.reason === "safety_end") return "unresolved_after_14d";
+  if (trade.reason === "time_stop") {
+    if (postExit?.resolution === "target") return "time_stop_probably_early";
+    if (postExit?.resolution === "stop" || postExit?.resolution === "ambiguous_sl_first") return "time_stop_protective";
+    return progressPct >= 60 ? "stalled_after_good_progress" : "weak_follow_through";
+  }
+  return "unclassified_exit";
+}
+
 function diagnoseTrade(trade, candles) {
   const entryTime = Date.parse(trade.entryTime);
   const exitTime = Date.parse(trade.exitTime);
@@ -143,14 +158,6 @@ function diagnoseTrade(trade, candles) {
   const closeR = exitCandle ? sideR(trade.side, trade.entry, exitCandle.close, risk) : null;
   const progressPct = trade.plannedRR > 0 ? mfeR / trade.plannedRR * 100 : 0;
   const postExit = resolveAfterExit(trade, candles, exitIndex);
-  let interpretation = "normal";
-  if (trade.reason === "take_profit") interpretation = "objective_target_reached";
-  if (trade.reason === "stop_loss") interpretation = mfeR < 0.5 ? "reaction_failed_early" : "profit_gave_back_to_stop";
-  if (trade.reason === "time_stop") {
-    if (postExit?.resolution === "target") interpretation = "time_stop_probably_early";
-    else if (postExit?.resolution === "stop" || postExit?.resolution === "ambiguous_sl_first") interpretation = "time_stop_protective";
-    else interpretation = progressPct >= 60 ? "stalled_after_good_progress" : "weak_follow_through";
-  }
   return {
     ...trade,
     risk: round(risk),
@@ -161,7 +168,7 @@ function diagnoseTrade(trade, candles) {
     hoursToMfe: round((candles[mfeIndex]?.time - entryTime) / 3_600_000, 2),
     approximateExitCloseR: round(closeR),
     postExit,
-    interpretation,
+    interpretation: interpretationFor(trade, mfeR, progressPct, postExit),
   };
 }
 
@@ -172,6 +179,10 @@ for (const result of report.results) {
   for (const trade of result.backtest.trades) diagnostics.push(diagnoseTrade(trade, candles));
 }
 
+const exitReasons = Object.fromEntries(
+  [...new Set(diagnostics.map((trade) => trade.reason))]
+    .map((reason) => [reason, diagnostics.filter((trade) => trade.reason === reason).length]),
+);
 const summary = {
   version: report.version,
   period: {
@@ -179,9 +190,7 @@ const summary = {
     end: new Date(report.marketDataEnd).toISOString(),
   },
   trades: diagnostics.length,
-  objectiveTargets: diagnostics.filter((trade) => trade.reason === "take_profit").length,
-  stopLosses: diagnostics.filter((trade) => trade.reason === "stop_loss").length,
-  timeStops: diagnostics.filter((trade) => trade.reason === "time_stop").length,
+  exitReasons,
   medianMfeR: round(diagnostics.map((trade) => trade.mfeR).sort((a, b) => a - b)[Math.floor(diagnostics.length / 2)] ?? 0),
   medianMaeR: round(diagnostics.map((trade) => trade.maeR).sort((a, b) => a - b)[Math.floor(diagnostics.length / 2)] ?? 0),
   interpretations: Object.fromEntries([...new Set(diagnostics.map((trade) => trade.interpretation))].map((key) => [key, diagnostics.filter((trade) => trade.interpretation === key).length])),
@@ -192,7 +201,7 @@ const lines = [
   "# Level-flow trade path diagnostics",
   "",
   `- Trades: ${summary.trades}`,
-  `- TP / SL / time-stop: ${summary.objectiveTargets} / ${summary.stopLosses} / ${summary.timeStops}`,
+  `- Exit reasons: ${JSON.stringify(summary.exitReasons)}`,
   `- Median MFE / MAE: ${summary.medianMfeR}R / ${summary.medianMaeR}R`,
   "",
 ];
