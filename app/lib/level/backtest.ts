@@ -1,4 +1,4 @@
-import type { Bias, Candle, Reaction, Side, Timeframe, TimeframeBundle, ZoneSource } from "./types.ts";
+import type { Bias, Candle, Reaction, SetupModel, Side, Timeframe, TimeframeBundle, ZoneSource } from "./types.ts";
 import { TF_MS } from "./math.ts";
 import { analyzeLevelFlow } from "./analysis.ts";
 import { structureBias } from "./structure.ts";
@@ -14,6 +14,7 @@ export type LevelBacktestTrade = {
   zoneLabel: string;
   zoneTimeframe: Timeframe;
   zoneSource: ZoneSource;
+  setupModel: SetupModel | null;
   zoneScore: number;
   zoneTouches: number;
   weeklyBias: Bias;
@@ -231,9 +232,10 @@ export function runLevelBacktest(
       signalTime: signalCandle.time,
       entryTime: next.time,
       exitTime,
-      zoneLabel: analysis.activeZone.label,
+      zoneLabel: `${analysis.activeZone.label} [MODEL:${analysis.setupModel ?? "legacy"}]`,
       zoneTimeframe: analysis.activeZone.timeframe,
       zoneSource: analysis.activeZone.source,
+      setupModel: analysis.setupModel ?? null,
       zoneScore: analysis.activeZone.score,
       zoneTouches: analysis.activeZone.touches,
       weeklyBias: analysis.weeklyBias,
