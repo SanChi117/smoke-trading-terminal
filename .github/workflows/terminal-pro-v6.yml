@@ -14,6 +14,19 @@ on:
       - "app/lib/level/analysis-v5-regime.ts"
       - "tests/terminal-pro.test.mjs"
       - ".github/workflows/terminal-pro-v6.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/components/TerminalPro.tsx"
+      - "app/components/ProChart.tsx"
+      - "app/components/TradingTerminal.module.css"
+      - "app/components/terminal-data.ts"
+      - "app/components/chart-math.ts"
+      - "app/components/WorkbenchTerminal.tsx"
+      - "app/lib/level/types.ts"
+      - "app/lib/level/analysis-v5-regime.ts"
+      - "tests/terminal-pro.test.mjs"
+      - ".github/workflows/terminal-pro-v6.yml"
   workflow_dispatch:
 
 concurrency:
