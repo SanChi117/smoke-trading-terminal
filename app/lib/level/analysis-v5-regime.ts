@@ -94,7 +94,6 @@ function decorateAllowedResult(base: MtfLevelAnalysis, model: SetupModel): MtfLe
   const label = modelLabel(model);
   return {
     ...base,
-    version: "SMOKE_LEVEL_FLOW_V5",
     setupModel: model,
     modelDetail: label,
     reason: `${label}. ${base.reason}`,
@@ -110,7 +109,6 @@ function decorateAllowedResult(base: MtfLevelAnalysis, model: SetupModel): MtfLe
 function blockResult(base: MtfLevelAnalysis, blocker: string): MtfLevelAnalysis {
   return {
     ...base,
-    version: "SMOKE_LEVEL_FLOW_V5",
     setupModel: "blocked",
     modelDetail: blocker,
     state: "watch",
@@ -144,7 +142,6 @@ export function analyzeLevelFlow(
   ) {
     return {
       ...base,
-      version: "SMOKE_LEVEL_FLOW_V5",
       setupModel: base.setupModel ?? null,
       modelDetail: base.modelDetail ?? null,
     };
