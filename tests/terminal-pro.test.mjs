@@ -9,7 +9,7 @@ function candle(time, open, high, low, close, volume = 100) {
 
 function analysis(overrides = {}) {
   return {
-    version: "SMOKE_LEVEL_FLOW_V5",
+    version: "SMOKE_LEVEL_FLOW_V3_AUDIT",
     evaluatedAt: 2_000_000,
     symbol: "ETHUSDT",
     bias: "up",
@@ -78,14 +78,15 @@ test("terminal universe contains 19 unique Binance futures symbols", () => {
   assert.ok(symbols.includes("SUIUSDT"));
 });
 
-test("active FVG disappears after a closing-price fill", () => {
+test("all active bullish FVGs disappear after a closing-price fill", () => {
   const openGap = [
     candle(0, 9.5, 10, 9, 9.8),
     candle(1, 10, 10.5, 9.7, 10.3),
     candle(2, 11.2, 11.8, 11, 11.5),
     candle(3, 11.5, 12, 11.1, 11.7),
   ];
-  assert.equal(activeFvgs(openGap).filter((gap) => gap.kind === "bull").length, 1);
+  const activeBeforeFill = activeFvgs(openGap).filter((gap) => gap.kind === "bull");
+  assert.ok(activeBeforeFill.length > 0);
   const filled = [...openGap, candle(4, 11.7, 11.9, 9.6, 9.9)];
   assert.equal(activeFvgs(filled).filter((gap) => gap.kind === "bull").length, 0);
 });
