@@ -4,6 +4,7 @@ export type ZoneKind = "demand" | "supply";
 export type ZoneSource = "order_block" | "swing" | "fvg" | "range_level";
 export type StructureTag = "BOS" | "CHoCH";
 export type Timeframe = "1w" | "1d" | "4h" | "15m" | "5m";
+export type SetupModel = "location" | "reversal" | "continuation" | "blocked";
 
 export type Candle = {
   time: number;
@@ -103,6 +104,8 @@ export type MtfLevelAnalysis = {
   side: Side | null;
   state: "ready" | "watch" | "blocked";
   confidence: number;
+  setupModel?: SetupModel | null;
+  modelDetail?: string | null;
   activeZone: PriceZone | null;
   targetZone: PriceZone | null;
   zones: PriceZone[];

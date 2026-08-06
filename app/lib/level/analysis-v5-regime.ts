@@ -3,6 +3,7 @@ import type {
   FourHourRoute,
   MtfLevelAnalysis,
   Reaction,
+  SetupModel,
   Side,
   TimeframeBundle,
   ZoneSource,
@@ -26,7 +27,7 @@ export type RegimeGateInput = {
 
 export type RegimeGateDecision = {
   allowed: boolean;
-  model: "location" | "reversal" | "continuation" | "blocked";
+  model: SetupModel;
   blocker: string | null;
 };
 
@@ -82,19 +83,19 @@ export function evaluateRegimeGate(input: RegimeGateInput): RegimeGateDecision {
       };
 }
 
-function modelLabel(model: RegimeGateDecision["model"]): string {
+function modelLabel(model: SetupModel): string {
   if (model === "reversal") return "REVERSAL · разворот от HTF-уровня";
   if (model === "continuation") return "CONTINUATION · продолжение старшего тренда";
+  if (model === "blocked") return "BLOCKED MODEL";
   return "LOCATION · работа от правильной части HTF-диапазона";
 }
 
-function decorateAllowedResult(
-  base: MtfLevelAnalysis,
-  model: RegimeGateDecision["model"],
-): MtfLevelAnalysis {
+function decorateAllowedResult(base: MtfLevelAnalysis, model: SetupModel): MtfLevelAnalysis {
   const label = modelLabel(model);
   return {
     ...base,
+    setupModel: model,
+    modelDetail: label,
     reason: `${label}. ${base.reason}`,
     trace: base.trace.map((step) => step.id === "entry"
       ? {
@@ -108,6 +109,8 @@ function decorateAllowedResult(
 function blockResult(base: MtfLevelAnalysis, blocker: string): MtfLevelAnalysis {
   return {
     ...base,
+    setupModel: "blocked",
+    modelDetail: blocker,
     state: "watch",
     reason: `BLOCKED MODEL · ${blocker}`,
     blockers: [blocker, ...base.blockers.filter((item) => item !== blocker)],
@@ -136,7 +139,13 @@ export function analyzeLevelFlow(
     || !base.side
     || !base.activeZone
     || !base.range
-  ) return base;
+  ) {
+    return {
+      ...base,
+      setupModel: base.setupModel ?? null,
+      modelDetail: base.modelDetail ?? null,
+    };
+  }
 
   const decision = evaluateRegimeGate({
     side: base.side,

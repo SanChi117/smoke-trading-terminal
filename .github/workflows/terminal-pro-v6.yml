@@ -1,0 +1,40 @@
+name: terminal-pro-v6
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/components/TerminalPro.tsx"
+      - "app/components/ProChart.tsx"
+      - "app/components/TradingTerminal.module.css"
+      - "app/components/terminal-data.ts"
+      - "app/components/chart-math.ts"
+      - "app/components/WorkbenchTerminal.tsx"
+      - "app/lib/level/types.ts"
+      - "app/lib/level/analysis-v5-regime.ts"
+      - "tests/terminal-pro.test.mjs"
+      - ".github/workflows/terminal-pro-v6.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: terminal-pro-v6-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-terminal:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Strategy and terminal tests
+        run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs tests/terminal-pro.test.mjs
+      - name: Lint changed terminal
+        run: npx eslint app/components/TerminalPro.tsx app/components/ProChart.tsx app/components/terminal-data.ts app/components/chart-math.ts app/lib/level/types.ts app/lib/level/analysis-v5-regime.ts tests/terminal-pro.test.mjs
+      - name: Production build
+        run: npm run build
