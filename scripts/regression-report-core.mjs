@@ -12,16 +12,30 @@ function stable(value) {
   return value;
 }
 
+function symbolManifest(report) {
+  if (Array.isArray(report.results)) {
+    return Object.fromEntries(report.results.map((row) => [row.symbol, {
+      evaluations: row.counters?.evaluations ?? 0,
+      firstSample: row.samples?.[0]?.time ?? null,
+      lastSample: row.samples?.at(-1)?.time ?? null,
+    }]).sort(([a], [b]) => a.localeCompare(b)));
+  }
+  return Object.fromEntries(Object.entries(report.perSymbol ?? {}).map(([symbol, row]) => {
+    const trades = row.trades ?? report.trades?.filter((trade) => trade.symbol === symbol) ?? [];
+    return [symbol, {
+      trades: row.metrics?.trades ?? trades.length,
+      firstTrade: trades[0]?.entryTime ?? null,
+      lastTrade: trades.at(-1)?.exitTime ?? trades.at(-1)?.entryTime ?? null,
+    }];
+  }).sort(([a], [b]) => a.localeCompare(b)));
+}
+
 export function inputManifest(report) {
   const payload = {
     marketDataEnd: report.marketDataEnd,
     auditStart: report.auditStart,
-    symbols: [...(report.symbols ?? [])].sort(),
-    perSymbol: Object.fromEntries((report.results ?? []).map((row) => [row.symbol, {
-      evaluations: row.counters?.evaluations ?? 0,
-      firstSample: row.samples?.[0]?.time ?? null,
-      lastSample: row.samples?.at(-1)?.time ?? null,
-    }]).sort(([a], [b]) => a.localeCompare(b))),
+    symbols: [...(report.symbols ?? Object.keys(report.perSymbol ?? {}))].sort(),
+    perSymbol: symbolManifest(report),
   };
   const canonical = JSON.stringify(stable(payload));
   return {
@@ -52,5 +66,23 @@ export function regressionVerdict({ sameInputs, baseline, candidate }) {
   return {
     verdict: reasons.length === 0 ? "PASS_NO_REGRESSION" : "REVIEW_REGRESSION",
     reasons,
+  };
+}
+
+export function comparisonRow(id, baselineReport, candidateReport) {
+  const baselineManifest = inputManifest(baselineReport);
+  const candidateManifest = inputManifest(candidateReport);
+  const sameInputs = baselineManifest.sha256 === candidateManifest.sha256;
+  const baseline = baselineReport.metrics;
+  const candidate = candidateReport.metrics;
+  return {
+    id,
+    sameInputs,
+    baselineManifest,
+    candidateManifest,
+    baseline,
+    candidate,
+    delta: compareMetrics(baseline, candidate),
+    ...regressionVerdict({ sameInputs, baseline, candidate }),
   };
 }
