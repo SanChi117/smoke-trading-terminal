@@ -1,9 +1,34 @@
-import type { Bias, MtfLevelAnalysis, Side, TimeframeBundle } from "./types.ts";
+import type {
+  Bias,
+  FourHourRoute,
+  MtfLevelAnalysis,
+  Reaction,
+  Side,
+  TimeframeBundle,
+  ZoneSource,
+} from "./types.ts";
 import { closedCandles } from "./math.ts";
 import { structureBias } from "./structure.ts";
 import { analyzeLevelFlow as analyzeV4 } from "./analysis-v4-audit.ts";
 
 type RangePosition = "premium" | "discount" | "equilibrium";
+
+export type RegimeGateInput = {
+  side: Side;
+  rangePosition: RangePosition;
+  weeklyBias: Bias;
+  dailyBias: Bias;
+  fourHourBias: Bias;
+  reactionType: Reaction["type"];
+  routeState: FourHourRoute["state"];
+  zoneSource: ZoneSource;
+};
+
+export type RegimeGateDecision = {
+  allowed: boolean;
+  model: "location" | "reversal" | "continuation" | "blocked";
+  blocker: string | null;
+};
 
 function desiredBias(side: Side): Bias {
   return side === "long" ? "up" : "down";
@@ -16,6 +41,45 @@ function oppositeBias(side: Side): Bias {
 function locationAligned(side: Side, position: RangePosition): boolean {
   if (position === "equilibrium") return true;
   return side === "long" ? position === "discount" : position === "premium";
+}
+
+export function evaluateRegimeGate(input: RegimeGateInput): RegimeGateDecision {
+  const desired = desiredBias(input.side);
+  const opposite = oppositeBias(input.side);
+  const alignedLocation = locationAligned(input.side, input.rangePosition);
+  const fourHourOpposite = input.fourHourBias === opposite;
+  const fullTrendAlignment = input.weeklyBias === desired
+    && input.dailyBias === desired
+    && input.fourHourBias === desired;
+
+  if (fourHourOpposite) {
+    const reversalConfirmed = alignedLocation
+      && input.reactionType === "displacement"
+      && input.routeState === "departing";
+    return reversalConfirmed
+      ? { allowed: true, model: "reversal", blocker: null }
+      : {
+          allowed: false,
+          model: "blocked",
+          blocker: `4H ещё направлен против ${input.side.toUpperCase()}: нужен displacement и подтверждённый выход из зоны`,
+        };
+  }
+
+  if (alignedLocation) {
+    return { allowed: true, model: "location", blocker: null };
+  }
+
+  const continuationConfirmed = fullTrendAlignment
+    && input.reactionType === "displacement"
+    && input.zoneSource !== "fvg"
+    && (input.routeState === "inside" || input.routeState === "approaching");
+  return continuationConfirmed
+    ? { allowed: true, model: "continuation", blocker: null }
+    : {
+        allowed: false,
+        model: "blocked",
+        blocker: `${input.side.toUpperCase()} в ${input.rangePosition}: разрешён только структурный trend-continuation с полным 1W/1D/4H alignment и displacement`,
+      };
 }
 
 function blockResult(base: MtfLevelAnalysis, blocker: string): MtfLevelAnalysis {
@@ -35,8 +99,8 @@ function blockResult(base: MtfLevelAnalysis, blocker: string): MtfLevelAnalysis 
 }
 
 /**
- * The V4 engine builds the complete MTF chain. This wrapper separates
- * location reversals from trend continuations instead of mixing both models.
+ * V4 builds the full MTF chain. V5 separates a location reversal from a
+ * trend continuation so the two setup families cannot accidentally mix.
  */
 export function analyzeLevelFlow(
   symbol: string,
@@ -51,45 +115,18 @@ export function analyzeLevelFlow(
     || !base.range
   ) return base;
 
-  const side = base.side;
-  const desired = desiredBias(side);
-  const opposite = oppositeBias(side);
-  const fourHour = structureBias(closedCandles(raw["4h"], "4h", now), "4h", 3);
-  const alignedLocation = locationAligned(side, base.range.position);
-  const fourHourOpposite = fourHour === opposite;
-  const fullTrendAlignment = base.weeklyBias === desired
-    && base.dailyBias === desired
-    && fourHour === desired;
+  const decision = evaluateRegimeGate({
+    side: base.side,
+    rangePosition: base.range.position,
+    weeklyBias: base.weeklyBias,
+    dailyBias: base.dailyBias,
+    fourHourBias: structureBias(closedCandles(raw["4h"], "4h", now), "4h", 3),
+    reactionType: base.reaction.type,
+    routeState: base.route4h.state,
+    zoneSource: base.activeZone.source,
+  });
 
-  // Counter-4H reversal: a lower-TF reaction alone is insufficient.
-  if (fourHourOpposite) {
-    const reversalConfirmed = alignedLocation
-      && base.reaction.type === "displacement"
-      && base.route4h.state === "departing";
-    if (!reversalConfirmed) {
-      return blockResult(
-        base,
-        `4H ещё направлен против ${side.toUpperCase()}: нужен displacement и подтверждённый выход из зоны`,
-      );
-    }
-    return base;
-  }
-
-  // Correct location: the complete V4 confirmation chain is sufficient.
-  if (alignedLocation) return base;
-
-  // Wrong half of the HTF range: only a fully aligned continuation is valid.
-  // A standalone FVG remains auxiliary evidence and cannot be the sole FROM.
-  const continuationConfirmed = fullTrendAlignment
-    && base.reaction.type === "displacement"
-    && base.activeZone.source !== "fvg"
-    && (base.route4h.state === "inside" || base.route4h.state === "approaching");
-  if (!continuationConfirmed) {
-    return blockResult(
-      base,
-      `${side.toUpperCase()} в ${base.range.position}: разрешён только структурный trend-continuation с полным 1W/1D/4H alignment и displacement`,
-    );
-  }
-
-  return base;
+  return decision.allowed || !decision.blocker
+    ? base
+    : blockResult(base, decision.blocker);
 }
