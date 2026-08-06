@@ -9,6 +9,7 @@ on:
       - "scripts/run_historical_long_audit.mjs"
       - "scripts/compare_historical_long_exit_modes.mjs"
       - "scripts/diagnose_sol_long_entries.mjs"
+      - "scripts/diagnose_entry_location.mjs"
       - ".github/workflows/level-flow-long-4x60.yml"
   workflow_dispatch:
 
@@ -33,7 +34,7 @@ jobs:
       - name: Strategy invariant tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - name: Logic lint
-        run: npx eslint app/lib/level scripts/run_historical_long_audit.mjs scripts/compare_historical_long_exit_modes.mjs scripts/diagnose_sol_long_entries.mjs
+        run: npx eslint app/lib/level scripts/run_historical_long_audit.mjs scripts/compare_historical_long_exit_modes.mjs scripts/diagnose_sol_long_entries.mjs scripts/diagnose_entry_location.mjs
       - name: Historical LONG audit
         env:
           AUDIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT
@@ -44,6 +45,21 @@ jobs:
         run: node --experimental-strip-types scripts/compare_historical_long_exit_modes.mjs
       - name: Diagnose SOL LONG entries
         run: node --experimental-strip-types scripts/diagnose_sol_long_entries.mjs
+      - name: Test location gates on historical LONG entries
+        env:
+          SIDE_FILTER: long
+          OUTPUT_TAG: historical-long
+        run: node --experimental-strip-types scripts/diagnose_entry_location.mjs
+      - name: Current SHORT audit
+        env:
+          AUDIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT
+          AUDIT_DAYS: 60
+        run: node --experimental-strip-types scripts/run_level_flow_logic_audit.mjs
+      - name: Test symmetric location gates on current SHORT entries
+        env:
+          SIDE_FILTER: short
+          OUTPUT_TAG: current-short
+        run: node --experimental-strip-types scripts/diagnose_entry_location.mjs
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
