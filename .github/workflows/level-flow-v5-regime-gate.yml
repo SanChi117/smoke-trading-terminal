@@ -1,0 +1,46 @@
+name: level-flow-v5-regime-gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/lib/level/**"
+      - "tests/mtf-regime-gate.test.mjs"
+      - "scripts/run_fixed_level_audit.mjs"
+      - "scripts/run_regime_gate_validation.mjs"
+      - ".github/workflows/level-flow-v5-regime-gate.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: level-flow-v5-regime-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-regime-gate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Install
+        run: npm ci
+      - name: Strategy invariant and regime tests
+        run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs tests/mtf-regime-gate.test.mjs
+      - name: Candidate lint
+        run: npx eslint app/lib/level tests/mtf-regime-gate.test.mjs scripts/run_fixed_level_audit.mjs scripts/run_regime_gate_validation.mjs
+      - name: Production build
+        run: npm run build
+      - name: Frozen four-window comparison
+        run: node --experimental-strip-types scripts/run_regime_gate_validation.mjs
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-level-flow-v5-regime-gate
+          path: runtime/regime-gate-validation/
+          if-no-files-found: error
+          retention-days: 30
