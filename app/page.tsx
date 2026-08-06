@@ -1,9 +1,9 @@
 import Link from "next/link";
-import WorkbenchTerminal from "./components/WorkbenchTerminal";
+import TerminalV6 from "./components/TerminalV6";
 
 export default function Home() {
   return <>
-    <WorkbenchTerminal />
+    <TerminalV6 />
     <Link
       href="/audit"
       aria-label="Открыть визуальный аудит сделок"
