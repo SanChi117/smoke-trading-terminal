@@ -33,11 +33,20 @@ import {
   type JournalEvent,
   type JournalEventType,
 } from "./terminal-data";
+import {
+  cancelPaperRecord,
+  createPaperJournalRecord,
+  paperDecisionId,
+  resolvePaperOutcome,
+  type PaperJournalOutcome,
+  type PaperJournalRecord,
+} from "./paper-journal";
 import styles from "./TradingTerminal.module.css";
 
 type Tab = "terminal" | "scanner" | "journal" | "backtest" | "method";
 const TIMEFRAMES: Timeframe[] = ["5m", "15m", "4h", "1d", "1w"];
 const JOURNAL_KEY = "smoke-level-flow-journal-v1";
+const PAPER_JOURNAL_KEY = "smoke-level-flow-paper-journal-v2";
 
 function stateLabel(analysis: MtfLevelAnalysis | null): string {
   if (!analysis) return "НЕ ПРОВЕРЕН";
@@ -53,8 +62,25 @@ function stateClass(analysis: MtfLevelAnalysis | null): string {
 }
 
 function csvEscape(value: unknown): string {
-  const text = String(value ?? "");
+  const text = typeof value === "object" && value !== null ? JSON.stringify(value) : String(value ?? "");
   return `"${text.replaceAll('"', '""')}"`;
+}
+
+function downloadText(filename: string, text: string, type: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function outcomeLabel(outcome: PaperJournalOutcome): string {
+  if (outcome === "take_profit") return "TAKE PROFIT";
+  if (outcome === "stop_loss") return "STOP LOSS";
+  if (outcome === "cancelled") return "ОТМЕНЁН";
+  if (outcome === "expired") return "ИСТЁК";
+  return "PENDING";
 }
 
 export default function TerminalPro() {
@@ -67,7 +93,8 @@ export default function TerminalPro() {
   const [analysis, setAnalysis] = useState<MtfLevelAnalysis | null>(null);
   const [scanResults, setScanResults] = useState<Record<string, MtfLevelAnalysis>>({});
   const [journal, setJournal] = useState<JournalEvent[]>([]);
-  const [journalFilter, setJournalFilter] = useState<{ symbol: string; type: "all" | JournalEventType; model: string }>({ symbol: "all", type: "all", model: "all" });
+  const [paperJournal, setPaperJournal] = useState<PaperJournalRecord[]>([]);
+  const [journalFilter, setJournalFilter] = useState<{ symbol: string; type: "all" | JournalEventType; model: string; outcome: "all" | PaperJournalOutcome }>({ symbol: "all", type: "all", model: "all", outcome: "all" });
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [backtesting, setBacktesting] = useState(false);
@@ -84,8 +111,10 @@ export default function TerminalPro() {
   useEffect(() => {
     try {
       setJournal(JSON.parse(localStorage.getItem(JOURNAL_KEY) ?? "[]") as JournalEvent[]);
+      setPaperJournal(JSON.parse(localStorage.getItem(PAPER_JOURNAL_KEY) ?? "[]") as PaperJournalRecord[]);
     } catch {
       setJournal([]);
+      setPaperJournal([]);
     } finally {
       journalLoaded.current = true;
     }
@@ -94,16 +123,35 @@ export default function TerminalPro() {
     if (!journalLoaded.current) return;
     try {
       localStorage.setItem(JOURNAL_KEY, JSON.stringify(journal.slice(0, 1500)));
+      localStorage.setItem(PAPER_JOURNAL_KEY, JSON.stringify(paperJournal.slice(0, 500)));
     } catch {
       // Best effort only.
     }
-  }, [journal]);
+  }, [journal, paperJournal]);
 
   const appendJournal = useCallback((event: JournalEvent) => {
     if (!journalLoaded.current) return;
     setJournal((current) => current.some((row) => row.signature === event.signature)
       ? current
       : [event, ...current].slice(0, 1500));
+  }, []);
+
+  const upsertPaperRecord = useCallback((record: PaperJournalRecord) => {
+    if (!journalLoaded.current) return;
+    setPaperJournal((current) => {
+      const index = current.findIndex((row) => row.decisionId === record.decisionId);
+      if (index < 0) return [record, ...current].slice(0, 500);
+      if (current[index].outcome !== "pending" && record.outcome === "pending") return current;
+      const next = [...current];
+      next[index] = record;
+      return next;
+    });
+  }, []);
+
+  const cancelPendingForAnalysis = useCallback((source: MtfLevelAnalysis, current: MtfLevelAnalysis) => {
+    const decisionId = paperDecisionId(source);
+    setPaperJournal((records) => records.map((record) =>
+      record.decisionId === decisionId ? cancelPaperRecord(record, current) : record));
   }, []);
 
   const acceptAnalysis = useCallback((result: MtfLevelAnalysis, nextBundle?: TimeframeBundle) => {
@@ -114,11 +162,17 @@ export default function TerminalPro() {
 
     if (changedReadySetup && previous) {
       appendJournal(journalEventFromAnalysis(result, "cancelled", previous));
+      cancelPendingForAnalysis(previous, result);
       appendJournal(journalEventFromAnalysis(result, "formed"));
+      if (nextBundle) upsertPaperRecord(createPaperJournalRecord(result, nextBundle));
     } else if (!previousReady && currentReady) {
       appendJournal(journalEventFromAnalysis(result, "formed"));
+      if (nextBundle) upsertPaperRecord(createPaperJournalRecord(result, nextBundle));
     } else if (previousReady && !currentReady && previous) {
       appendJournal(journalEventFromAnalysis(result, "cancelled", previous));
+      cancelPendingForAnalysis(previous, result);
+    } else if (currentReady && nextBundle) {
+      upsertPaperRecord(createPaperJournalRecord(result, nextBundle));
     }
 
     previousAnalyses.current[result.symbol] = result;
@@ -127,7 +181,12 @@ export default function TerminalPro() {
       if (nextBundle) setBundle(nextBundle);
       setAnalysis(result);
     }
-  }, [appendJournal]);
+  }, [appendJournal, cancelPendingForAnalysis, upsertPaperRecord]);
+
+  const resolveClosedCandle = useCallback((symbol: string, candle: TimeframeBundle["15m"][number]) => {
+    setPaperJournal((records) => records.map((record) =>
+      record.symbol === symbol ? resolvePaperOutcome(record, candle) : record));
+  }, []);
 
   const symbolMeta = TERMINAL_SYMBOLS.find(([symbol]) => symbol === selected) ?? TERMINAL_SYMBOLS[0];
   const ticker = tickers[selected];
@@ -155,7 +214,7 @@ export default function TerminalPro() {
       const data = await fetchStrategyBundle(symbol);
       if (id !== requestId.current && selectedRef.current === symbol) return;
       const decision = analyzeLevelFlow(symbol, data);
-      acceptAnalysis(decision, selectedRef.current === symbol ? data : undefined);
+      acceptAnalysis(decision, data);
     } catch (reason) {
       if (selectedRef.current === symbol) {
         setFeedState("offline");
@@ -185,8 +244,9 @@ export default function TerminalPro() {
       else rows.push(candle);
       return { ...current, [timeframe]: rows.slice(-1500) };
     });
+    if (closed && timeframe === "15m") resolveClosedCandle(selected, candle);
     if (closed && (timeframe === "5m" || timeframe === "15m")) void loadSymbol(selected, true);
-  }, setFeedState), [loadSymbol, selected, timeframe]);
+  }, setFeedState), [loadSymbol, resolveClosedCandle, selected, timeframe]);
 
   useEffect(() => {
     if (timeframe === "5m") return undefined;
@@ -198,7 +258,7 @@ export default function TerminalPro() {
   useEffect(() => {
     if (!bundle) return;
     const next = analyzeLevelFlow(selected, bundle);
-    acceptAnalysis(next);
+    acceptAnalysis(next, bundle);
   }, [acceptAnalysis, bundle, selected]);
 
   const scanAll = async () => {
@@ -212,7 +272,7 @@ export default function TerminalPro() {
         if (!symbol) return;
         try {
           const data = await fetchStrategyBundle(symbol);
-          acceptAnalysis(analyzeLevelFlow(symbol, data), symbol === selectedRef.current ? data : undefined);
+          acceptAnalysis(analyzeLevelFlow(symbol, data), data);
         } catch {
           // A failed symbol must not stop the complete scan.
         }
@@ -243,30 +303,37 @@ export default function TerminalPro() {
     }
   };
 
-  const exportJournal = () => {
-    const headers = ["time", "symbol", "event", "side", "model", "confidence", "weekly", "daily", "range", "route4h", "level", "source", "reaction", "entry", "stop", "target", "rr", "reason", "blockers"];
-    const rows = journal.map((event) => [
-      new Date(event.time).toISOString(), event.symbol, event.type, event.side, event.model, event.confidence,
-      event.weeklyBias, event.dailyBias, event.rangePosition, event.route4h, event.zoneLabel, event.zoneSource,
-      event.reactionType, event.entry, event.stop, event.target, event.rr, event.reason, event.blockers.join(" | "),
+  const exportPaperCsv = () => {
+    const headers = ["decision_id", "created_at", "updated_at", "symbol", "state", "side", "model", "zone_id", "zone_source", "zone_timeframe", "reaction", "entry", "stop", "target", "rr", "outcome", "outcome_at", "outcome_price", "reason", "blockers", "trace", "candles"];
+    const rows = paperJournal.map((record) => [
+      record.decisionId, new Date(record.createdAt).toISOString(), new Date(record.updatedAt).toISOString(), record.symbol,
+      record.state, record.side, record.setupModel, record.zoneId, record.zoneSource, record.zoneTimeframe, record.reactionType,
+      record.entry, record.stop, record.target, record.rr, record.outcome,
+      record.outcomeAt ? new Date(record.outcomeAt).toISOString() : "", record.outcomePrice,
+      record.reason, record.blockers.join(" | "), record.trace, record.candles,
     ]);
     const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `smoke-trading-journal-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadText(`smoke-paper-journal-${new Date().toISOString().slice(0, 10)}.csv`, csv, "text/csv;charset=utf-8");
   };
 
-  const filteredJournal = journal.filter((event) =>
-    (journalFilter.symbol === "all" || event.symbol === journalFilter.symbol)
-    && (journalFilter.type === "all" || event.type === journalFilter.type)
-    && (journalFilter.model === "all" || event.model === journalFilter.model));
+  const exportPaperJson = () => {
+    downloadText(
+      `smoke-paper-journal-${new Date().toISOString().slice(0, 10)}.json`,
+      JSON.stringify({ version: "SMOKE_LEVEL_FLOW_V5_PAPER_JOURNAL_V2", exportedAt: new Date().toISOString(), records: paperJournal }, null, 2),
+      "application/json;charset=utf-8",
+    );
+  };
+
+  const filteredPaperJournal = paperJournal.filter((record) =>
+    (journalFilter.symbol === "all" || record.symbol === journalFilter.symbol)
+    && (journalFilter.model === "all" || record.setupModel === journalFilter.model)
+    && (journalFilter.outcome === "all" || record.outcome === journalFilter.outcome));
   const readyCount = Object.values(scanResults).filter((result) => result.state === "ready").length;
   const watchCount = Object.values(scanResults).filter((result) => result.state === "watch").length;
-  const formedCount = journal.filter((event) => event.type === "formed").length;
-  const cancelledCount = journal.filter((event) => event.type === "cancelled").length;
+  const pendingCount = paperJournal.filter((record) => record.outcome === "pending").length;
+  const winCount = paperJournal.filter((record) => record.outcome === "take_profit").length;
+  const lossCount = paperJournal.filter((record) => record.outcome === "stop_loss").length;
+  const cancelledCount = paperJournal.filter((record) => record.outcome === "cancelled").length;
 
   return <main className={styles.terminalShell}>
     <header className={styles.topbar}>
@@ -278,7 +345,7 @@ export default function TerminalPro() {
         {([
           ["terminal", "Терминал"], ["scanner", "Сканер"], ["journal", "Журнал"], ["backtest", "Бэктест"], ["method", "Логика"],
         ] as Array<[Tab, string]>).map(([key, label]) => <button key={key} onClick={() => setTab(key)} className={tab === key ? styles.activeTab : ""}>
-          {label}{key === "journal" && journal.length > 0 ? <em>{journal.length}</em> : null}
+          {label}{key === "journal" && paperJournal.length > 0 ? <em>{paperJournal.length}</em> : null}
         </button>)}
       </nav>
       <div className={styles.systemState}>
@@ -341,13 +408,13 @@ export default function TerminalPro() {
           <article><small>STOP</small><b className={styles.negative}>{formatPrice(analysis?.stop)}</b></article>
           <article><small>TARGET</small><b className={styles.positive}>{formatPrice(analysis?.target)}</b></article>
         </div></div>
-        <div className={styles.liveLogicNote}>Активные POI, FVG, маршрут, реакция и торговый план берутся из текущего V5-решения. После инвалидации они автоматически исчезают; в истории остаётся только маркер события.</div>
+        <div className={styles.liveLogicNote}>Активные POI, FVG, маршрут, реакция и торговый план берутся из текущего V5-решения. READY сохраняется со snapshot свечей и trace; TP, SL или отмена фиксируются автоматически.</div>
       </aside>
     </div>}
 
     {tab === "scanner" && <section className={styles.tabBody}>
       <div className={styles.tabHeader}><span><small>MTF SCANNER · 19 SYMBOLS</small><h2>Уровневые сетапы V5</h2></span><button onClick={scanAll} disabled={scanning}>{scanning ? "Сканирую…" : "Сканировать все"}</button></div>
-      <div className={styles.statCards}><article><span>READY</span><b>{readyCount}</b></article><article><span>WATCH</span><b>{watchCount}</b></article><article><span>JOURNAL FORMED</span><b>{formedCount}</b></article><article><span>CANCELLED</span><b>{cancelledCount}</b></article></div>
+      <div className={styles.statCards}><article><span>READY</span><b>{readyCount}</b></article><article><span>WATCH</span><b>{watchCount}</b></article><article><span>PENDING</span><b>{pendingCount}</b></article><article><span>TP / SL</span><b>{winCount} / {lossCount}</b></article></div>
       <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Монета</th><th>Цена</th><th>1W / 1D</th><th>Модель</th><th>FROM уровень</th><th>4H</th><th>5m</th><th>R:R</th><th>Score</th><th>Решение</th></tr></thead><tbody>{TERMINAL_SYMBOLS.map(([symbol]) => {
         const result = scanResults[symbol];
         return <tr key={symbol} onClick={() => { setSelected(symbol); setTab("terminal"); }}>
@@ -357,17 +424,18 @@ export default function TerminalPro() {
     </section>}
 
     {tab === "journal" && <section className={styles.tabBody}>
-      <div className={styles.tabHeader}><span><small>TRADING JOURNAL</small><h2>Жизненный цикл сетапов</h2><p>Формирование и отмена фиксируются автоматически из реального V5-решения.</p></span><div className={styles.headerActions}><button onClick={exportJournal} disabled={journal.length === 0}>Экспорт CSV</button><button className={styles.dangerButton} onClick={() => window.confirm("Полностью очистить торговый журнал?") && setJournal([])} disabled={journal.length === 0}>Очистить</button></div></div>
+      <div className={styles.tabHeader}><span><small>PAPER TRADING JOURNAL</small><h2>Решения, snapshots и outcomes</h2><p>Каждый READY-сетап хранит trace, закрытые входные свечи и итог без реального исполнения.</p></span><div className={styles.headerActions}><button onClick={exportPaperCsv} disabled={paperJournal.length === 0}>CSV</button><button onClick={exportPaperJson} disabled={paperJournal.length === 0}>JSON</button><button className={styles.dangerButton} onClick={() => window.confirm("Полностью очистить paper journal?") && setPaperJournal([])} disabled={paperJournal.length === 0}>Очистить</button></div></div>
+      <div className={styles.statCards}><article><span>PENDING</span><b>{pendingCount}</b></article><article><span>TAKE PROFIT</span><b>{winCount}</b></article><article><span>STOP LOSS</span><b>{lossCount}</b></article><article><span>CANCELLED</span><b>{cancelledCount}</b></article></div>
       <div className={styles.journalFilters}>
         <label>Монета<select value={journalFilter.symbol} onChange={(event) => setJournalFilter((current) => ({ ...current, symbol: event.target.value }))}><option value="all">Все</option>{TERMINAL_SYMBOLS.map(([symbol]) => <option key={symbol} value={symbol}>{symbol}</option>)}</select></label>
-        <label>Событие<select value={journalFilter.type} onChange={(event) => setJournalFilter((current) => ({ ...current, type: event.target.value as "all" | JournalEventType }))}><option value="all">Все</option><option value="formed">Сформирован</option><option value="cancelled">Отменён</option></select></label>
+        <label>Outcome<select value={journalFilter.outcome} onChange={(event) => setJournalFilter((current) => ({ ...current, outcome: event.target.value as "all" | PaperJournalOutcome }))}><option value="all">Все</option><option value="pending">Pending</option><option value="take_profit">Take profit</option><option value="stop_loss">Stop loss</option><option value="cancelled">Cancelled</option><option value="expired">Expired</option></select></label>
         <label>Модель<select value={journalFilter.model} onChange={(event) => setJournalFilter((current) => ({ ...current, model: event.target.value }))}><option value="all">Все</option><option value="location">LOCATION</option><option value="reversal">REVERSAL</option><option value="continuation">CONTINUATION</option><option value="blocked">BLOCKED</option></select></label>
-        <span>Показано <b>{filteredJournal.length}</b> из {journal.length}</span>
+        <span>Показано <b>{filteredPaperJournal.length}</b> из {paperJournal.length}</span>
       </div>
-      <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Время</th><th>Монета</th><th>Событие</th><th>Side / модель</th><th>Контекст</th><th>FROM уровень</th><th>Реакция</th><th>Entry / SL / TP</th><th>R:R</th><th>Score</th><th>Причина</th></tr></thead><tbody>{filteredJournal.map((event) => <tr key={event.id} onClick={() => { setSelected(event.symbol); setTab("terminal"); }}>
-        <td>{new Date(event.time).toLocaleString("ru-RU")}</td><td><b>{event.symbol}</b></td><td><span className={event.type === "formed" ? styles.eventFormed : styles.eventCancelled}>{event.type === "formed" ? "СФОРМИРОВАН" : "ОТМЕНЁН"}</span></td><td>{event.side?.toUpperCase() ?? "—"}<small>{modelLabel(event.model)}</small></td><td>{event.weeklyBias} / {event.dailyBias}<small>{event.rangePosition} · 4H {event.route4h}</small></td><td>{event.zoneLabel ?? "—"}<small>{event.zoneTimeframe} · {event.zoneSource}</small></td><td>{event.reactionType}<small>score {event.reactionScore}</small></td><td>{formatPrice(event.entry)}<small>{formatPrice(event.stop)} / {formatPrice(event.target)}</small></td><td>{event.rr?.toFixed(2) ?? "—"}</td><td>{event.confidence}</td><td className={styles.reasonCell}>{event.reason}{event.blockers.length > 0 && <small>Блокеры: {event.blockers.join(" · ")}</small>}</td>
+      <div className={styles.tableWrap}><table className={styles.dataTable}><thead><tr><th>Создан</th><th>Монета</th><th>Outcome</th><th>Side / модель</th><th>FROM уровень</th><th>Реакция</th><th>Entry / SL / TP</th><th>R:R</th><th>Trace</th><th>Snapshots</th><th>Причина</th></tr></thead><tbody>{filteredPaperJournal.map((record) => <tr key={record.decisionId} onClick={() => { setSelected(record.symbol); setTab("terminal"); }}>
+        <td>{new Date(record.createdAt).toLocaleString("ru-RU")}<small>{record.outcomeAt ? new Date(record.outcomeAt).toLocaleString("ru-RU") : "ожидает результата"}</small></td><td><b>{record.symbol}</b></td><td><span className={record.outcome === "take_profit" ? styles.eventFormed : record.outcome === "pending" ? styles.statePill : styles.eventCancelled}>{outcomeLabel(record.outcome)}</span><small>{formatPrice(record.outcomePrice)}</small></td><td>{record.side?.toUpperCase() ?? "—"}<small>{modelLabel(record.setupModel)}</small></td><td>{record.zoneId ?? "—"}<small>{record.zoneTimeframe} · {record.zoneSource}</small></td><td>{record.reactionType}</td><td>{formatPrice(record.entry)}<small>{formatPrice(record.stop)} / {formatPrice(record.target)}</small></td><td>{record.rr?.toFixed(2) ?? "—"}</td><td>{record.trace.length}<small>{record.trace.map((step) => `${step.label}:${step.state}`).join(" · ")}</small></td><td>{Object.values(record.candles).reduce((sum, rows) => sum + (rows?.length ?? 0), 0)}<small>{Object.entries(record.candles).map(([tf, rows]) => `${tf}:${rows?.length ?? 0}`).join(" · ")}</small></td><td className={styles.reasonCell}>{record.reason}{record.blockers.length > 0 && <small>Блокеры: {record.blockers.join(" · ")}</small>}</td>
       </tr>)}</tbody></table></div>
-      {filteredJournal.length === 0 && <div className={styles.emptyState}>Журнал начнёт заполняться при формировании или отмене сетапа. Текущие READY-сетапы также фиксируются при сканировании.</div>}
+      {filteredPaperJournal.length === 0 && <div className={styles.emptyState}>Paper journal начнёт заполняться при появлении READY-сетапа во время загрузки или сканирования.</div>}
     </section>}
 
     {tab === "backtest" && <section className={styles.tabBody}>
@@ -384,7 +452,7 @@ export default function TerminalPro() {
         <article><b>4. 5m реакция</b><p>Sweep-reclaim, structure retest или displacement отображаются только пока реакция относится к актуальному сценарию.</p></article>
         <article><b>5. V5 regime gate</b><p>LOCATION, REVERSAL и CONTINUATION являются разными моделями. Смешанные сценарии получают BLOCKED MODEL.</p></article>
         <article><b>6. 15m исполнение</b><p>Entry, SL и TP появляются только в состоянии READY и исчезают сразу после отмены или инвалидации плана.</p></article>
-        <article><b>7. Торговый журнал</b><p>Переход READY → отмена сохраняется отдельно. На графике остаётся компактный маркер, раскрывающий причины при наведении.</p></article>
+        <article><b>7. Paper journal</b><p>READY сохраняет decisionId, trace и входные свечи. Закрытые 15m свечи разрешают TP/SL по консервативному правилу stop-first.</p></article>
         <article><b>8. Пользовательская разметка</b><p>Уровни, трендовые линии, зоны и заметки сохраняются локально отдельно для каждой монеты и таймфрейма.</p></article>
       </div>
     </section>}
