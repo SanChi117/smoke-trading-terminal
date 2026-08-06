@@ -82,17 +82,40 @@ export function evaluateRegimeGate(input: RegimeGateInput): RegimeGateDecision {
       };
 }
 
+function modelLabel(model: RegimeGateDecision["model"]): string {
+  if (model === "reversal") return "REVERSAL · разворот от HTF-уровня";
+  if (model === "continuation") return "CONTINUATION · продолжение старшего тренда";
+  return "LOCATION · работа от правильной части HTF-диапазона";
+}
+
+function decorateAllowedResult(
+  base: MtfLevelAnalysis,
+  model: RegimeGateDecision["model"],
+): MtfLevelAnalysis {
+  const label = modelLabel(model);
+  return {
+    ...base,
+    reason: `${label}. ${base.reason}`,
+    trace: base.trace.map((step) => step.id === "entry"
+      ? {
+          ...step,
+          detail: `${label}. ${step.detail}`,
+        }
+      : step),
+  };
+}
+
 function blockResult(base: MtfLevelAnalysis, blocker: string): MtfLevelAnalysis {
   return {
     ...base,
     state: "watch",
-    reason: blocker,
+    reason: `BLOCKED MODEL · ${blocker}`,
     blockers: [blocker, ...base.blockers.filter((item) => item !== blocker)],
     trace: base.trace.map((step) => step.id === "entry"
       ? {
           ...step,
           state: "pending" as const,
-          detail: `${step.detail}; regime gate: ${blocker}`,
+          detail: `BLOCKED MODEL · ${blocker}. ${step.detail}`,
         }
       : step),
   };
@@ -126,7 +149,8 @@ export function analyzeLevelFlow(
     zoneSource: base.activeZone.source,
   });
 
-  return decision.allowed || !decision.blocker
-    ? base
-    : blockResult(base, decision.blocker);
+  if (!decision.allowed && decision.blocker) {
+    return blockResult(base, decision.blocker);
+  }
+  return decorateAllowedResult(base, decision.model);
 }
