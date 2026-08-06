@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "app/lib/level/**"
+      - "tests/mtf-regime-gate.test.mjs"
       - "scripts/run_fixed_level_audit.mjs"
       - "scripts/run_regime_gate_validation.mjs"
       - ".github/workflows/level-flow-v5-regime-gate.yml"
@@ -28,10 +29,12 @@ jobs:
         run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
       - name: Install
         run: npm ci
-      - name: Strategy invariant tests
-        run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
+      - name: Strategy invariant and regime tests
+        run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs tests/mtf-regime-gate.test.mjs
       - name: Candidate lint
-        run: npx eslint app/lib/level scripts/run_fixed_level_audit.mjs scripts/run_regime_gate_validation.mjs
+        run: npx eslint app/lib/level tests/mtf-regime-gate.test.mjs scripts/run_fixed_level_audit.mjs scripts/run_regime_gate_validation.mjs
+      - name: Production build
+        run: npm run build
       - name: Frozen four-window comparison
         run: node --experimental-strip-types scripts/run_regime_gate_validation.mjs
       - name: Upload report
