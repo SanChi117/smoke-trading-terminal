@@ -6,37 +6,51 @@ Read-only Binance Futures terminal, multi-timeframe level strategy, browser back
 
 ## Current experimental strategy
 
-The active interface uses **`SMOKE_LEVEL_FLOW_V1`**:
+The active interface uses **`SMOKE_LEVEL_FLOW_V5`**:
 
 ```text
-1W/1D structure and range
+1W/1D structure and dealing range
         ↓
 active demand/supply level
         ↓
-4H approach inside the HTF range
+4H route to / inside / away from the level
         ↓
-5m sweep/reclaim + BOS/CHoCH/displacement
+5m sweep-reclaim, structure retest or displacement
         ↓
-15m closed-candle confirmation
+V5 regime gate: LOCATION / REVERSAL / CONTINUATION
         ↓
-Entry / structural SL / target at opposing level
+15m closed-candle execution plan
+        ↓
+Entry / structural SL / target at opposing liquidity
 ```
 
-Unlike the legacy V4.1 logic, EMA and ignition candles are not a hidden fallback and are not the reason for a trade. Full rules: [docs/SMOKE_LEVEL_FLOW_V1.md](docs/SMOKE_LEVEL_FLOW_V1.md).
+V5 remains frozen for research. Expanded walk-forward validation produced strong validation/test windows but negative calibration and fewer than 100 candidate trades, so the strategy verdict remains `RESEARCH_ONLY_REGIME_INSTABILITY`.
 
 ## Terminal functionality
 
 - public Binance USDⓈ-M Futures data without an API key;
 - separate 1W, 1D, 4H, 15m and 5m histories;
 - live WebSocket candle updates for the selected timeframe;
-- nine-symbol level scanner;
-- explainable five-stage decision trace;
-- interactive SVG chart: wheel zoom, pan, vertical price scaling, crosshair/OHLCV;
-- selectable EMA20/50, ATR, volume, BOS/CHoCH, HH/HL/LH/LL, FVG and zones;
-- chart notes stored locally in the browser;
-- Entry, SL and TP rendered from the same decision object used by the scanner;
-- browser backtest with next-open execution, SL-first ambiguity resolution, costs and cooldown;
-- paper-only safety boundary.
+- 19-symbol level scanner;
+- explainable decision trace and active FROM-level;
+- V5 setup models: LOCATION, REVERSAL and CONTINUATION;
+- interactive chart with structure, zones, route, reaction and trade plan;
+- browser backtest with next-open execution and SL-first ambiguity resolution;
+- local paper journal with decision snapshots and complete trace;
+- automatic paper outcomes: pending, take-profit, stop-loss, cancelled and expired;
+- CSV and JSON export;
+- automatic paper-review readiness gate.
+
+## Paper-review gate
+
+Live remains blocked unless both minimum evidence requirements are met:
+
+1. at least **100 closed virtual trades**;
+2. at least **30 calendar days** of paper observation.
+
+Pending, cancelled and expired records do not count as closed trades. The gate reports closed trades, TP/SL, win rate, Net R, expectancy, profit factor and results by setup model.
+
+`PAPER_REVIEW_READY` means only that the minimum paper sample exists for a separate review. It does not enable live execution and does not override the frozen V5 research verdict.
 
 ## Run locally
 
@@ -52,18 +66,17 @@ Open the local URL printed by Vite/Vinext.
 ## Verification
 
 ```bash
-node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs
+npm test
 npm run lint
 npm run build
-python -m unittest discover -s tests -v
-python scripts/validate_terminal_safety.py
+npm run test:python
 ```
 
-GitHub Actions workflow: `.github/workflows/level-flow-ci.yml`.
+The standard Node test suite includes rendered HTML checks, paper-journal lifecycle tests and paper-review gate tests. Pull requests must pass the repository CI checks before merge.
 
 ## Legacy research baseline
 
-The repository still contains the earlier Python research stack for `TAGGED_MTF_NO_DIRECTION_BLOCK_V1 / HYBRID v2`. Its fresh August 2026 validation was negative and remains `BLOCK_LIVE`. It is preserved for reproducibility and is not silently represented as the new level-flow strategy.
+The repository still contains the earlier Python research stack for `TAGGED_MTF_NO_DIRECTION_BLOCK_V1 / HYBRID v2`. Its August 2026 validation was negative and remains `BLOCK_LIVE`. It is preserved for reproducibility and is not represented as the active level-flow strategy.
 
 ## Source attribution
 
@@ -71,4 +84,4 @@ The terminology for internal/swing structure, BOS, CHoCH, order blocks, EQH/EQL,
 
 ## Safety status
 
-Live trading remains blocked. Before any separate live implementation is considered, the level-flow model must complete a representative backtest and a paper review with at least 100 closed virtual trades and 30 calendar days.
+Live trading remains blocked. The repository is a research and paper-review environment only.
