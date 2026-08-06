@@ -232,7 +232,7 @@ export function runLevelBacktest(
       signalTime: signalCandle.time,
       entryTime: next.time,
       exitTime,
-      zoneLabel: analysis.activeZone.label,
+      zoneLabel: `${analysis.activeZone.label} [MODEL:${analysis.setupModel ?? "legacy"}]`,
       zoneTimeframe: analysis.activeZone.timeframe,
       zoneSource: analysis.activeZone.source,
       setupModel: analysis.setupModel ?? null,
