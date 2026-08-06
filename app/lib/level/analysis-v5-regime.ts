@@ -3,6 +3,8 @@ import { closedCandles } from "./math.ts";
 import { structureBias } from "./structure.ts";
 import { analyzeLevelFlow as analyzeV4 } from "./analysis-v4-audit.ts";
 
+type RangePosition = "premium" | "discount" | "equilibrium";
+
 function desiredBias(side: Side): Bias {
   return side === "long" ? "up" : "down";
 }
@@ -11,12 +13,7 @@ function oppositeBias(side: Side): Bias {
   return side === "long" ? "down" : "up";
 }
 
-function locationAligned(
-  side: Side,
-  position: MtfLevelAnalysis["range"] extends infer Range
-    ? Range extends { position: infer Position } ? Position : never
-    : never,
-): boolean {
+function locationAligned(side: Side, position: RangePosition): boolean {
   if (position === "equilibrium") return true;
   return side === "long" ? position === "discount" : position === "premium";
 }
@@ -38,14 +35,8 @@ function blockResult(base: MtfLevelAnalysis, blocker: string): MtfLevelAnalysis 
 }
 
 /**
- * V5 regime gate.
- *
- * The underlying V4 engine still builds the complete chain:
- * 1W/1D context -> 1D/4H POI -> 4H route -> 5m reaction -> 15m confirm.
- * This wrapper only classifies the already-complete setup as either:
- * - location reversal,
- * - trend continuation,
- * - or an invalid mixture of both models.
+ * The V4 engine builds the complete MTF chain. This wrapper separates
+ * location reversals from trend continuations instead of mixing both models.
  */
 export function analyzeLevelFlow(
   symbol: string,
@@ -70,9 +61,7 @@ export function analyzeLevelFlow(
     && base.dailyBias === desired
     && fourHour === desired;
 
-  // Reversal model: if 4H is still directed against the trade, a lower-TF
-  // reaction is not enough. Price must leave the source area with direct
-  // displacement before the 15m execution is accepted.
+  // Counter-4H reversal: a lower-TF reaction alone is insufficient.
   if (fourHourOpposite) {
     const reversalConfirmed = alignedLocation
       && base.reaction.type === "displacement"
@@ -86,15 +75,11 @@ export function analyzeLevelFlow(
     return base;
   }
 
-  // In the correct half of the HTF range, the complete V4 confirmation chain
-  // is sufficient. Equilibrium is treated as neutral location, not as an
-  // automatic rejection.
+  // Correct location: the complete V4 confirmation chain is sufficient.
   if (alignedLocation) return base;
 
-  // Continuation model in the "wrong" half of the range. It is allowed only
-  // when all directional layers agree, the reaction is direct displacement,
-  // and the source is a structural level. A standalone FVG is supporting
-  // evidence, not a sufficient FROM level for continuation.
+  // Wrong half of the HTF range: only a fully aligned continuation is valid.
+  // A standalone FVG remains auxiliary evidence and cannot be the sole FROM.
   const continuationConfirmed = fullTrendAlignment
     && base.reaction.type === "displacement"
     && base.activeZone.source !== "fvg"
