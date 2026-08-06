@@ -8,6 +8,7 @@ on:
       - "scripts/run_level_flow_logic_audit.mjs"
       - "scripts/run_historical_long_audit.mjs"
       - "scripts/compare_historical_long_exit_modes.mjs"
+      - "scripts/diagnose_sol_long_entries.mjs"
       - ".github/workflows/level-flow-long-4x60.yml"
   workflow_dispatch:
 
@@ -32,7 +33,7 @@ jobs:
       - name: Strategy invariant tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - name: Logic lint
-        run: npx eslint app/lib/level scripts/run_historical_long_audit.mjs scripts/compare_historical_long_exit_modes.mjs
+        run: npx eslint app/lib/level scripts/run_historical_long_audit.mjs scripts/compare_historical_long_exit_modes.mjs scripts/diagnose_sol_long_entries.mjs
       - name: Historical LONG audit
         env:
           AUDIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT
@@ -41,6 +42,8 @@ jobs:
         run: node --experimental-strip-types scripts/run_historical_long_audit.mjs
       - name: Compare LONG exit modes
         run: node --experimental-strip-types scripts/compare_historical_long_exit_modes.mjs
+      - name: Diagnose SOL LONG entries
+        run: node --experimental-strip-types scripts/diagnose_sol_long_entries.mjs
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
