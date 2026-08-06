@@ -1,1 +1,1 @@
-export { default } from "./TerminalPro";
+export { default } from "./TerminalWithPaperReview";
