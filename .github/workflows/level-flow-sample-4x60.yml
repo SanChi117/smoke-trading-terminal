@@ -6,6 +6,7 @@ on:
     paths:
       - "app/lib/level/**"
       - "scripts/run_level_flow_logic_audit.mjs"
+      - "scripts/diagnose_level_flow_trades.mjs"
       - ".github/workflows/level-flow-sample-4x60.yml"
   workflow_dispatch:
 
@@ -30,7 +31,7 @@ jobs:
       - name: Strategy invariant tests
         run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - name: Logic lint
-        run: npx eslint app/lib/level scripts/run_level_flow_logic_audit.mjs tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
+        run: npx eslint app/lib/level scripts/run_level_flow_logic_audit.mjs scripts/diagnose_level_flow_trades.mjs tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
       - name: Production build
         run: npm run build
       - name: BTC ETH SOL BNB 60-day logic audit
@@ -38,6 +39,8 @@ jobs:
           AUDIT_SYMBOLS: BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT
           AUDIT_DAYS: 60
         run: node --experimental-strip-types scripts/run_level_flow_logic_audit.mjs
+      - name: Trade path diagnostics
+        run: node --experimental-strip-types scripts/diagnose_level_flow_trades.mjs
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
