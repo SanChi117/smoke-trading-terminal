@@ -3,6 +3,8 @@ import { TF_MS } from "./math.ts";
 import { analyzeLevelFlow } from "./analysis.ts";
 import { structureBias } from "./structure.ts";
 
+export type LevelExitMode = "fixed_time" | "structure_managed";
+
 export type LevelBacktestTrade = {
   symbol: string;
   side: Side;
@@ -28,7 +30,14 @@ export type LevelBacktestTrade = {
   exit: number;
   grossR: number;
   netR: number;
-  reason: "stop_loss" | "take_profit" | "time_stop";
+  reason:
+    | "stop_loss"
+    | "take_profit"
+    | "time_stop"
+    | "structure_invalidation"
+    | "no_progress"
+    | "protect_profit"
+    | "safety_end";
   confidence: number;
 };
 
@@ -81,6 +90,14 @@ function bundleAt(raw: TimeframeBundle, now: number): TimeframeBundle {
   };
 }
 
+function tradeR(side: Side, entry: number, price: number, risk: number): number {
+  return side === "long" ? (price - entry) / risk : (entry - price) / risk;
+}
+
+function oppositeBias(side: Side): Bias {
+  return side === "long" ? "down" : "up";
+}
+
 export function runLevelBacktest(
   symbol: string,
   raw: TimeframeBundle,
@@ -90,10 +107,17 @@ export function runLevelBacktest(
     cooldownBars?: number;
     commissionPctPerSide?: number;
     slippagePctPerSide?: number;
+    exitMode?: LevelExitMode;
+    noProgressBars?: number;
   } = {},
 ): LevelBacktestResult {
   const testDays = options.testDays ?? 14;
-  const maxHoldBars = options.maxHoldBars ?? 192;
+  const exitMode = options.exitMode ?? "structure_managed";
+  const requestedMaxHoldBars = options.maxHoldBars ?? (exitMode === "fixed_time" ? 192 : 14 * 24 * 4);
+  const maxHoldBars = exitMode === "structure_managed"
+    ? Math.max(requestedMaxHoldBars, 14 * 24 * 4)
+    : requestedMaxHoldBars;
+  const noProgressBars = options.noProgressBars ?? 96;
   const cooldownBars = options.cooldownBars ?? 12;
   const commission = options.commissionPctPerSide ?? 0.04;
   const slippage = options.slippagePctPerSide ?? 0.02;
@@ -131,11 +155,12 @@ export function runLevelBacktest(
     const actualRR = Math.abs(target - entry) / risk;
     if (actualRR < 1.6) continue;
 
-    const timeStopIndex = Math.min(candles15.length - 1, index + 1 + maxHoldBars);
-    let exit = candles15[timeStopIndex].close;
-    let exitTime = candles15[timeStopIndex].time;
-    let grossR = analysis.side === "long" ? (exit - entry) / risk : (entry - exit) / risk;
-    let reason: LevelBacktestTrade["reason"] = "time_stop";
+    const finalIndex = Math.min(candles15.length - 1, index + 1 + maxHoldBars);
+    let exit = candles15[finalIndex].close;
+    let exitTime = candles15[finalIndex].time;
+    let grossR = tradeR(analysis.side, entry, exit, risk);
+    let reason: LevelBacktestTrade["reason"] = exitMode === "fixed_time" ? "time_stop" : "safety_end";
+    let maxMfeR = 0;
 
     for (
       let futureIndex = index + 1;
@@ -159,9 +184,43 @@ export function runLevelBacktest(
         reason = "take_profit";
         break;
       }
+
+      const favorablePrice = analysis.side === "long" ? candle.high : candle.low;
+      maxMfeR = Math.max(maxMfeR, tradeR(analysis.side, entry, favorablePrice, risk));
       exit = candle.close;
       exitTime = candle.time;
-      grossR = analysis.side === "long" ? (exit - entry) / risk : (entry - exit) / risk;
+      grossR = tradeR(analysis.side, entry, exit, risk);
+
+      if (exitMode === "structure_managed") {
+        const now = candle.time + TF_MS["15m"] + 1;
+        const currentBundle = bundleAt(raw, now);
+        const bias15 = structureBias(currentBundle["15m"], "15m", 3);
+        const bias4h = structureBias(currentBundle["4h"], "4h", 3);
+        const heldBars = futureIndex - (index + 1) + 1;
+        const against15 = bias15 === oppositeBias(analysis.side);
+        const against4h = bias4h === oppositeBias(analysis.side);
+        const lostSourceZone = analysis.side === "long"
+          ? candle.close < analysis.activeZone.low
+          : candle.close > analysis.activeZone.high;
+        const structureInvalidated = lostSourceZone && against15;
+        const noProgress = heldBars >= noProgressBars
+          && maxMfeR < 0.45
+          && grossR < 0
+          && against15;
+        const protectProfit = maxMfeR >= 1
+          && grossR < 0.35
+          && against15
+          && against4h;
+
+        if (structureInvalidated || noProgress || protectProfit) {
+          reason = structureInvalidated
+            ? "structure_invalidation"
+            : noProgress
+              ? "no_progress"
+              : "protect_profit";
+          break;
+        }
+      }
     }
 
     const riskPct = risk / entry * 100;
