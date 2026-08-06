@@ -1,24 +1,38 @@
 name: level-flow-ci
 
 on:
-  push:
+  pull_request:
     branches: [main]
     paths:
-      - "app/components/LevelChart.tsx"
-      - "app/components/WorkbenchTerminal.tsx"
-      - "app/components/WorkbenchTerminal.module.css"
+      - "app/components/**"
       - "app/lib/level/**"
       - "app/lib/mtf-level-strategy.ts"
       - "app/lib/binance-level-client.ts"
       - "app/page.tsx"
-      - "tests/mtf-level-strategy.test.mjs"
-      - "tests/binance-level-client.test.mjs"
+      - "tests/**"
+      - "scripts/validate_terminal_safety.py"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - ".github/workflows/level-flow-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/components/**"
+      - "app/lib/level/**"
+      - "app/lib/mtf-level-strategy.ts"
+      - "app/lib/binance-level-client.ts"
+      - "app/page.tsx"
+      - "tests/**"
+      - "scripts/validate_terminal_safety.py"
+      - "package.json"
+      - "package-lock.json"
       - "tsconfig.json"
       - ".github/workflows/level-flow-ci.yml"
   workflow_dispatch:
 
 jobs:
-  verify:
+  web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,6 +41,15 @@ jobs:
           node-version: "22.16.0"
           cache: npm
       - run: npm ci
-      - run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs
+      - run: npm test
       - run: npm run lint
       - run: npm run build
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm run test:python
