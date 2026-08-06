@@ -88,7 +88,7 @@ export type FourHourRoute = {
 };
 
 export type MtfLevelAnalysis = {
-  version: "SMOKE_LEVEL_FLOW_V1" | "SMOKE_LEVEL_FLOW_V3_AUDIT" | "SMOKE_LEVEL_FLOW_V5";
+  version: "SMOKE_LEVEL_FLOW_V1" | "SMOKE_LEVEL_FLOW_V3_AUDIT";
   evaluatedAt: number;
   symbol: string;
   bias: Bias;
