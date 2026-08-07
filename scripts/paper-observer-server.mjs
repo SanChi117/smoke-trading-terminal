@@ -23,6 +23,7 @@ const SYMBOLS = String(process.env.PAPER_SYMBOLS ?? DEFAULT_SYMBOLS.join(","))
   .map((symbol) => symbol.trim().toUpperCase())
   .filter(Boolean);
 const ONCE = process.env.PAPER_OBSERVER_ONCE === "1";
+const DISABLE_SCAN = process.env.PAPER_OBSERVER_DISABLE_SCAN === "1";
 
 let journal = [];
 let server = null;
@@ -32,6 +33,7 @@ const observerState = {
   mode: "PAPER_ONLY",
   startedAt: new Date().toISOString(),
   scanning: false,
+  scanDisabled: DISABLE_SCAN,
   scanIntervalMs: SCAN_INTERVAL_MS,
   symbols: SYMBOLS,
   lastScanStartedAt: null,
@@ -92,7 +94,7 @@ async function scanSymbol(symbol) {
 }
 
 async function scanAll() {
-  if (observerState.scanning) return false;
+  if (DISABLE_SCAN || observerState.scanning) return false;
   observerState.scanning = true;
   observerState.lastScanStartedAt = new Date().toISOString();
   observerState.errors = {};
@@ -156,6 +158,7 @@ function startServer() {
         mode: observerState.mode,
         version: observerState.version,
         scanning: observerState.scanning,
+        scanDisabled: observerState.scanDisabled,
         lastScanCompletedAt: observerState.lastScanCompletedAt,
       });
       return;
@@ -185,12 +188,14 @@ async function shutdown(signal) {
 
 await loadJournal();
 if (ONCE) {
-  await scanAll();
+  if (!DISABLE_SCAN) await scanAll();
   console.log(`PAPER_OBSERVER_ONCE=${JSON.stringify(statusPayload())}`);
 } else {
   startServer();
-  void scanAll();
-  scanTimer = setInterval(() => void scanAll(), SCAN_INTERVAL_MS);
+  if (!DISABLE_SCAN) {
+    void scanAll();
+    scanTimer = setInterval(() => void scanAll(), SCAN_INTERVAL_MS);
+  }
   process.on("SIGINT", () => void shutdown("SIGINT"));
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
 }
