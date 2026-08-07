@@ -8,13 +8,16 @@ import { admitPaperRecord } from "../app/components/paper-observation.ts";
 import { calculatePaperReview } from "../app/components/paper-review.ts";
 import { evaluatePaperRiskGate } from "../app/components/paper-risk.ts";
 
-export function resolvePendingFromBundle(records, symbol, bundle) {
+const FIFTEEN_MINUTES_MS = 15 * 60_000;
+
+export function resolvePendingFromBundle(records, symbol, bundle, closedAt = Date.now()) {
   const candles = [...(bundle?.["15m"] ?? [])].sort((a, b) => a.time - b.time);
   return records.map((record) => {
     if (record.symbol !== symbol || record.outcome !== "pending") return record;
     let next = record;
     for (const candle of candles) {
       if (candle.time <= record.createdAt) continue;
+      if (candle.time + FIFTEEN_MINUTES_MS > closedAt) continue;
       next = resolvePaperOutcome(next, candle);
       if (next.outcome !== "pending") break;
     }
@@ -23,7 +26,7 @@ export function resolvePendingFromBundle(records, symbol, bundle) {
 }
 
 export function applyAnalysisToJournal(records, analysis, bundle) {
-  let next = resolvePendingFromBundle(records, analysis.symbol, bundle);
+  let next = resolvePendingFromBundle(records, analysis.symbol, bundle, analysis.evaluatedAt);
   const candidateId = paperDecisionId(analysis);
 
   if (analysis.state !== "ready") {
