@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SELF = Path(__file__).resolve()
 SCAN_DIRS = (
     ROOT / "app",
     ROOT / "scripts",
@@ -35,6 +36,8 @@ def main() -> int:
             continue
         for path in folder.rglob("*"):
             if not path.is_file() or path.suffix not in CODE_SUFFIXES:
+                continue
+            if path.resolve() == SELF:
                 continue
             text = path.read_text(encoding="utf-8", errors="replace")
             for token in FORBIDDEN:
