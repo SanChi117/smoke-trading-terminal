@@ -19,6 +19,8 @@ export type PaperRiskGate = {
   reasons: PaperRiskReason[];
   dailyPnlPct: number;
   weeklyPnlPct: number;
+  dailyDrawdownPct: number;
+  weeklyDrawdownPct: number;
   consecutiveStops: number;
   openPositionsForSymbol: number;
 };
@@ -64,15 +66,22 @@ function closedBefore(records: PaperJournalRecord[], at: number): PaperJournalRe
     .sort((a, b) => Number(a.outcomeAt) - Number(b.outcomeAt));
 }
 
-function pnlSince(
+function sessionStats(
   records: PaperJournalRecord[],
   start: number,
   at: number,
   riskPerTradePct: number,
-): number {
-  return closedBefore(records, at)
-    .filter((record) => Number(record.outcomeAt) >= start)
-    .reduce((sum, record) => sum + (paperTradeReturnPct(record, riskPerTradePct) ?? 0), 0);
+): { pnlPct: number; maxDrawdownPct: number } {
+  const closed = closedBefore(records, at).filter((record) => Number(record.outcomeAt) >= start);
+  let equity = 0;
+  let peak = 0;
+  let maxDrawdownPct = 0;
+  for (const record of closed) {
+    equity += paperTradeReturnPct(record, riskPerTradePct) ?? 0;
+    peak = Math.max(peak, equity);
+    maxDrawdownPct = Math.min(maxDrawdownPct, equity - peak);
+  }
+  return { pnlPct: equity, maxDrawdownPct };
 }
 
 function consecutiveStopsToday(records: PaperJournalRecord[], at: number): number {
@@ -92,8 +101,8 @@ export function evaluatePaperRiskGate(
   at: number,
   config: PaperRiskConfig = DEFAULT_PAPER_RISK_CONFIG,
 ): PaperRiskGate {
-  const dailyPnlPct = pnlSince(records, utcDayStart(at), at, config.riskPerTradePct);
-  const weeklyPnlPct = pnlSince(records, utcWeekStart(at), at, config.riskPerTradePct);
+  const daily = sessionStats(records, utcDayStart(at), at, config.riskPerTradePct);
+  const weekly = sessionStats(records, utcWeekStart(at), at, config.riskPerTradePct);
   const consecutiveStops = consecutiveStopsToday(records, at);
   const openPositionsForSymbol = records.filter((record) => (
     record.symbol === symbol
@@ -102,16 +111,18 @@ export function evaluatePaperRiskGate(
   )).length;
 
   const reasons: PaperRiskReason[] = [];
-  if (dailyPnlPct <= config.dailyDrawdownStopPct) reasons.push("DAILY_DRAWDOWN_STOP");
-  if (weeklyPnlPct <= config.weeklyDrawdownStopPct) reasons.push("WEEKLY_DRAWDOWN_STOP");
+  if (daily.maxDrawdownPct <= config.dailyDrawdownStopPct) reasons.push("DAILY_DRAWDOWN_STOP");
+  if (weekly.maxDrawdownPct <= config.weeklyDrawdownStopPct) reasons.push("WEEKLY_DRAWDOWN_STOP");
   if (consecutiveStops >= config.maxConsecutiveStops) reasons.push("THREE_CONSECUTIVE_STOPS");
   if (openPositionsForSymbol >= config.maxOpenPositionsPerSymbol) reasons.push("SYMBOL_POSITION_ALREADY_OPEN");
 
   return {
     allowed: reasons.length === 0,
     reasons,
-    dailyPnlPct,
-    weeklyPnlPct,
+    dailyPnlPct: daily.pnlPct,
+    weeklyPnlPct: weekly.pnlPct,
+    dailyDrawdownPct: daily.maxDrawdownPct,
+    weeklyDrawdownPct: weekly.maxDrawdownPct,
     consecutiveStops,
     openPositionsForSymbol,
   };
