@@ -9,11 +9,23 @@ const eslintConfig = defineConfig([
     files: [
       "app/components/TerminalPro.tsx",
       "app/components/ProChart.tsx",
+      "app/audit/page.tsx",
+      "app/components/LevelChart.tsx",
+      "app/components/ProLevelChart.tsx",
+      "app/components/TerminalV6.tsx",
     ],
     rules: {
       // These client components intentionally synchronize React state with
       // Binance streams, localStorage and symbol/timeframe changes.
       "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  {
+    files: ["app/components/ProLevelChart.tsx"],
+    rules: {
+      // The compact chart calculation mutates only the domain bounds; the
+      // intermediate center/half declarations are intentionally grouped.
+      "prefer-const": "off",
     },
   },
   // Override default ignores of eslint-config-next.
