@@ -1,13 +1,13 @@
 import {
   markPaperRecordSkippedByRisk,
   type PaperJournalRecord,
-} from "./paper-journal";
+} from "./paper-journal.ts";
 import {
   DEFAULT_PAPER_RISK_CONFIG,
   evaluatePaperRiskGate,
   type PaperRiskConfig,
   type PaperRiskGate,
-} from "./paper-risk";
+} from "./paper-risk.ts";
 
 export type PaperAdmissionResult = {
   record: PaperJournalRecord;
