@@ -10,6 +10,7 @@ export type PaperReviewMetrics = {
   losses: number;
   cancelled: number;
   expired: number;
+  skippedKillSwitch: number;
   observedDays: number;
   winRate: number | null;
   expectancyR: number | null;
@@ -88,6 +89,7 @@ export function calculatePaperReview(
     losses: losses.length,
     cancelled: records.filter((record) => record.outcome === "cancelled").length,
     expired: records.filter((record) => record.outcome === "expired").length,
+    skippedKillSwitch: records.filter((record) => record.outcome === "skipped_kill_switch").length,
     observedDays,
     winRate: closed.length > 0 ? (wins.length / closed.length) * 100 : null,
     expectancyR: closed.length > 0 ? netR / closed.length : null,
