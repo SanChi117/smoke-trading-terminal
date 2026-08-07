@@ -6,8 +6,11 @@ on:
     paths:
       - "app/lib/level/**"
       - "tests/mtf-regime-gate.test.mjs"
+      - "tests/regression-report-core.test.mjs"
       - "scripts/run_fixed_level_audit.mjs"
       - "scripts/run_regime_gate_validation.mjs"
+      - "scripts/run_regression_report.mjs"
+      - "scripts/regression-report-core.mjs"
       - ".github/workflows/level-flow-v5-regime-gate.yml"
   workflow_dispatch:
 
@@ -29,15 +32,15 @@ jobs:
         run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
       - name: Install
         run: npm ci
-      - name: Strategy invariant and regime tests
-        run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs tests/mtf-regime-gate.test.mjs
+      - name: Strategy invariant, regime and regression tests
+        run: node --experimental-strip-types --test tests/mtf-level-strategy.test.mjs tests/binance-level-client.test.mjs tests/mtf-regime-gate.test.mjs tests/regression-report-core.test.mjs
       - name: Candidate lint
-        run: npx eslint app/lib/level tests/mtf-regime-gate.test.mjs scripts/run_fixed_level_audit.mjs scripts/run_regime_gate_validation.mjs
+        run: npx eslint app/lib/level tests/mtf-regime-gate.test.mjs tests/regression-report-core.test.mjs scripts/run_fixed_level_audit.mjs scripts/run_regime_gate_validation.mjs scripts/run_regression_report.mjs scripts/regression-report-core.mjs
       - name: Production build
         run: npm run build
-      - name: Frozen four-window comparison
-        run: node --experimental-strip-types scripts/run_regime_gate_validation.mjs
-      - name: Upload report
+      - name: Frozen six-window comparison and regression report
+        run: node --experimental-strip-types scripts/run_regression_report.mjs
+      - name: Upload reports
         uses: actions/upload-artifact@v4
         with:
           name: smoke-level-flow-v5-regime-gate
