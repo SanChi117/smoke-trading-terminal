@@ -27,6 +27,8 @@ export function admitPaperRecord(
         reasons: [],
         dailyPnlPct: 0,
         weeklyPnlPct: 0,
+        dailyDrawdownPct: 0,
+        weeklyDrawdownPct: 0,
         consecutiveStops: 0,
         openPositionsForSymbol: 0,
       },
