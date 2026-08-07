@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import {
+  costSensitivity,
+  filterOutcomeAudit,
+} from "./validation-diagnostics-core.mjs";
 
 const ANALYSIS_PATH = path.resolve("app/lib/level/analysis.ts");
 const AUDIT_REPORT = path.resolve("runtime/level-flow-logic-audit/logic-audit.json");
@@ -34,8 +38,9 @@ function enrichTrade(trade) {
   const zoneParts = String(trade.zone ?? "").split(/\s+/);
   return {
     ...trade,
-    setupModel: modelMatch ? modelMatch[1].toLowerCase() : "unknown",
-    zoneSource: zoneParts[1] ?? "unknown",
+    setupModel: trade.setupModel ?? (modelMatch ? modelMatch[1].toLowerCase() : "unknown"),
+    zoneSource: trade.zoneSource ?? zoneParts[1] ?? "unknown",
+    regime: trade.regime ?? "unknown",
     zone: String(trade.zone ?? "").replace(/\s*\[MODEL:[^\]]+\]\s*$/, ""),
   };
 }
@@ -76,6 +81,7 @@ function summarizeDimensions(trades) {
     perModel: summarizeBy(trades, "setupModel", ["location", "reversal", "continuation"]),
     perZoneSource: summarizeBy(trades, "zoneSource", ["ob", "swing", "range", "fvg"]),
     perReaction: summarizeBy(trades, "reactionType"),
+    perRegime: summarizeBy(trades, "regime", ["trend_up", "trend_down", "range", "high_vol"]),
   };
 }
 
@@ -111,7 +117,17 @@ function runAudit(mode, window) {
 
 function aggregate(rows, mode) {
   const trades = rows.flatMap((row) => row[mode].trades);
-  return { metrics: summarizeTrades(trades), ...summarizeDimensions(trades) };
+  return { metrics: summarizeTrades(trades), ...summarizeDimensions(trades), trades };
+}
+
+function diagnostics(baselineTrades, candidateTrades) {
+  return {
+    filterOutcomeAudit: filterOutcomeAudit(baselineTrades, candidateTrades),
+    costSensitivity: {
+      baseline: costSensitivity(baselineTrades),
+      candidate: costSensitivity(candidateTrades),
+    },
+  };
 }
 
 await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -134,6 +150,7 @@ try {
       expectancyChangeR: round(row.candidate.metrics.expectancyR - row.baseline.metrics.expectancyR),
       drawdownChangeR: round(row.candidate.metrics.maxDrawdownR - row.baseline.metrics.maxDrawdownR),
     };
+    Object.assign(row, diagnostics(row.baseline.trades, row.candidate.trades));
     results.push(row);
   }
 } finally {
@@ -148,12 +165,16 @@ overall.delta = {
   expectancyChangeR: round(overall.candidate.metrics.expectancyR - overall.baseline.metrics.expectancyR),
   drawdownChangeR: round(overall.candidate.metrics.maxDrawdownR - overall.baseline.metrics.maxDrawdownR),
 };
+Object.assign(overall, diagnostics(overall.baseline.trades, overall.candidate.trades));
 
 const byRole = Object.fromEntries(["calibration", "validation", "test"].map((role) => {
   const rows = results.filter((row) => row.role === role);
+  const baseline = aggregate(rows, "baseline");
+  const candidate = aggregate(rows, "candidate");
   return [role, {
-    baseline: aggregate(rows, "baseline"),
-    candidate: aggregate(rows, "candidate"),
+    baseline,
+    candidate,
+    ...diagnostics(baseline.trades, candidate.trades),
   }];
 }));
 
@@ -173,8 +194,14 @@ if (!testStable) verdictReasons.push("candidate failed combined test windows");
 if (overall.candidate.metrics.trades < 100) verdictReasons.push("candidate sample remains below 100 trades");
 
 const report = {
-  version: "SMOKE_LEVEL_FLOW_V5_FROZEN_WALK_FORWARD_V2",
-  note: "V5 parameters and trade logic are unchanged. The harness expands only independent evaluation and diagnostics.",
+  version: "SMOKE_LEVEL_FLOW_V5_FROZEN_WALK_FORWARD_V3_DIAGNOSTICS",
+  note: "V5 parameters and trade logic are unchanged. Regime labels, cost repricing and baseline-vs-candidate filter diagnostics are post-trade evaluation only.",
+  regimeDefinition: {
+    highVol: "Closed 4H ATR(14)% percentile >= 75 versus up to the prior 120 causal ATR observations; high-vol has precedence.",
+    trendUp: "Daily structure bias up AND 4H phase structure bias up, when not high-vol.",
+    trendDown: "Daily structure bias down AND 4H phase structure bias down, when not high-vol.",
+    range: "All remaining non-high-vol states.",
+  },
   verdict,
   verdictReasons,
   symbols: SYMBOLS,
@@ -192,19 +219,39 @@ const metricLine = (label, value) => {
 };
 const dimensionLines = (label, values) => Object.entries(values)
   .map(([key, metrics]) => metricLine(`${label} ${key.toUpperCase()}`, metrics));
+const filterLines = (audit) => [
+  `- Rejected winners: ${audit.rejectedWinners.count} (${audit.rejectedWinners.netR}R baseline outcome)`,
+  `- Rejected losers: ${audit.rejectedLosers.count} (${audit.rejectedLosers.netR}R baseline outcome)`,
+  `- Kept winners: ${audit.keptWinners.count}`,
+  `- Kept losers: ${audit.keptLosers.count}`,
+  `- Candidate-only: ${audit.candidateOnly.count}`,
+  `- Rejection precision: ${audit.rejectionPrecisionPct}%`,
+];
+const costLines = (costs) => Object.entries(costs.candidate).map(([id, value]) =>
+  metricLine(`candidate cost ${id} (${value.commissionPctPerSide}% fee + ${value.slippagePctPerSide}% slip per side)`, value.metrics));
 const lines = [
-  "# SMOKE LEVEL FLOW V5 frozen walk-forward validation",
+  "# SMOKE LEVEL FLOW V5 frozen walk-forward validation + diagnostics",
   "",
   `- Verdict: **${verdict}**`,
   ...verdictReasons.map((reason) => `- Risk: ${reason}`),
   `- Universe: ${SYMBOLS.length} symbols`,
   `- Windows: ${WINDOWS.length} non-overlapping 60-day windows`,
   "- Trading parameters: unchanged",
+  "- Regime classification: causal closed-candle diagnostic only",
   "",
   metricLine("Overall baseline", overall.baseline),
   metricLine("Overall candidate", overall.candidate),
   ...dimensionLines("candidate model", overall.candidate.perModel),
   ...dimensionLines("candidate zone", overall.candidate.perZoneSource),
+  ...dimensionLines("candidate regime", overall.candidate.perRegime),
+  "",
+  "## Cost sensitivity",
+  "",
+  ...costLines(overall.costSensitivity),
+  "",
+  "## Filter outcome audit",
+  "",
+  ...filterLines(overall.filterOutcomeAudit),
   "",
 ];
 for (const role of ["calibration", "validation", "test"]) {
@@ -214,6 +261,9 @@ for (const role of ["calibration", "validation", "test"]) {
   lines.push(...dimensionLines("candidate side", byRole[role].candidate.perSide));
   lines.push(...dimensionLines("candidate model", byRole[role].candidate.perModel));
   lines.push(...dimensionLines("candidate zone", byRole[role].candidate.perZoneSource));
+  lines.push(...dimensionLines("candidate regime", byRole[role].candidate.perRegime));
+  lines.push(...costLines(byRole[role].costSensitivity));
+  lines.push(...filterLines(byRole[role].filterOutcomeAudit));
   lines.push("");
 }
 for (const row of results) {
@@ -223,6 +273,9 @@ for (const row of results) {
   lines.push(...dimensionLines("candidate side", row.candidate.perSide));
   lines.push(...dimensionLines("candidate model", row.candidate.perModel));
   lines.push(...dimensionLines("candidate zone", row.candidate.perZoneSource));
+  lines.push(...dimensionLines("candidate regime", row.candidate.perRegime));
+  lines.push(...costLines(row.costSensitivity));
+  lines.push(...filterLines(row.filterOutcomeAudit));
   lines.push("");
 }
 await fs.writeFile(path.join(OUTPUT_DIR, "regime-gate-validation.md"), `${lines.join("\n")}\n`);

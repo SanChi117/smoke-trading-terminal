@@ -7,6 +7,7 @@ import {
   runLevelBacktest,
   TF_MS,
 } from "../app/lib/level/index.ts";
+import { classifyMarketRegime } from "./validation-diagnostics-core.mjs";
 
 const DAY = 86_400_000;
 const AUDIT_DAYS = Number(process.env.AUDIT_DAYS ?? 60);
@@ -221,6 +222,39 @@ function bundleAt(raw, now) {
   };
 }
 
+function volatilityAt(raw, now) {
+  const candles = historyAt(raw["4h"], "4h", now);
+  if (candles.length < 30) return { atrPct4h: null, percentile4h: null, highVol: false };
+  const trPct = [];
+  for (let index = 1; index < candles.length; index += 1) {
+    const candle = candles[index];
+    const previous = candles[index - 1];
+    const trueRange = Math.max(
+      candle.high - candle.low,
+      Math.abs(candle.high - previous.close),
+      Math.abs(candle.low - previous.close),
+    );
+    trPct.push(previous.close > 0 ? trueRange / previous.close * 100 : 0);
+  }
+  const atrSeries = [];
+  const period = 14;
+  for (let end = period; end <= trPct.length; end += 1) {
+    const slice = trPct.slice(end - period, end);
+    atrSeries.push(slice.reduce((sum, value) => sum + value, 0) / period);
+  }
+  const history = atrSeries.slice(-120);
+  const current = history.at(-1);
+  if (!Number.isFinite(current) || history.length < 40) {
+    return { atrPct4h: round(current), percentile4h: null, highVol: false };
+  }
+  const rank = history.filter((value) => value <= current).length / history.length * 100;
+  return {
+    atrPct4h: round(current),
+    percentile4h: round(rank, 2),
+    highVol: rank >= 75,
+  };
+}
+
 function increment(record, key) {
   if (!key) return;
   record[key] = (record[key] ?? 0) + 1;
@@ -387,20 +421,39 @@ function auditSymbol(symbol, bundle) {
         longR: round(backtest.metrics.longR),
         shortR: round(backtest.metrics.shortR),
       },
-      trades: backtest.trades.map((trade) => ({
-        symbol: trade.symbol,
-        side: trade.side,
-        entryTime: iso(trade.entryTime),
-        exitTime: iso(trade.exitTime),
-        zone: `${trade.zoneTimeframe} ${trade.zoneSource} ${trade.zoneLabel}`,
-        reactionType: trade.reactionType,
-        entry: trade.entry,
-        stop: trade.stop,
-        target: trade.target,
-        plannedRR: round(trade.plannedRR),
-        netR: round(trade.netR),
-        reason: trade.reason,
-      })),
+      trades: backtest.trades.map((trade) => {
+        const volatility = volatilityAt(bundle, trade.signalTime + TF_MS["15m"] + 1);
+        const regime = classifyMarketRegime({
+          dailyBias: trade.dailyBias,
+          phase4hBias: trade.phase4hBias,
+          highVol: volatility.highVol,
+        });
+        return {
+          symbol: trade.symbol,
+          side: trade.side,
+          signalTime: iso(trade.signalTime),
+          entryTime: iso(trade.entryTime),
+          exitTime: iso(trade.exitTime),
+          zone: `${trade.zoneTimeframe} ${trade.zoneSource} ${trade.zoneLabel}`,
+          zoneSource: trade.zoneSource,
+          setupModel: trade.setupModel,
+          weeklyBias: trade.weeklyBias,
+          dailyBias: trade.dailyBias,
+          phase4hBias: trade.phase4hBias,
+          regime,
+          atrPct4h: volatility.atrPct4h,
+          volatilityPercentile4h: volatility.percentile4h,
+          reactionType: trade.reactionType,
+          entry: trade.entry,
+          stop: trade.stop,
+          target: trade.target,
+          stopPct: round(trade.stopPct),
+          plannedRR: round(trade.plannedRR),
+          grossR: round(trade.grossR),
+          netR: round(trade.netR),
+          reason: trade.reason,
+        };
+      }),
     },
   };
 }
