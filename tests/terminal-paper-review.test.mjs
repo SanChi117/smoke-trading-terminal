@@ -26,6 +26,7 @@ function record({ outcome, createdAt, outcomeAt, rr = 2, model = "location" }) {
     outcome,
     outcomeAt: outcomeAt ?? null,
     outcomePrice: outcome === "take_profit" ? 102 : outcome === "stop_loss" ? 99 : null,
+    riskGateReasons: outcome === "skipped_kill_switch" ? ["DAILY_DRAWDOWN_STOP"] : [],
   };
 }
 
@@ -65,16 +66,18 @@ test("becomes paper-review ready after thresholds", () => {
   assert.equal(result.perModel.reversal.closedTrades, 50);
 });
 
-test("pending and cancelled records do not count as closed trades", () => {
+test("pending, cancelled and kill-switch skips do not count as closed trades", () => {
   const now = Date.UTC(2026, 0, 1);
   const rows = [
     record({ outcome: "pending", createdAt: now }),
     record({ outcome: "cancelled", createdAt: now + 86_400_000, outcomeAt: now + 86_400_000 }),
-    record({ outcome: "take_profit", createdAt: now + 2 * 86_400_000, outcomeAt: now + 2 * 86_400_000, rr: 1.5 }),
+    record({ outcome: "skipped_kill_switch", createdAt: now + 2 * 86_400_000, outcomeAt: now + 2 * 86_400_000 }),
+    record({ outcome: "take_profit", createdAt: now + 3 * 86_400_000, outcomeAt: now + 3 * 86_400_000, rr: 1.5 }),
   ];
   const result = calculatePaperReview(rows, { minClosedTrades: 1, minObservedDays: 1 });
   assert.equal(result.closedTrades, 1);
   assert.equal(result.pendingTrades, 1);
   assert.equal(result.cancelled, 1);
+  assert.equal(result.skippedKillSwitch, 1);
   assert.equal(result.netR, 1.5);
 });

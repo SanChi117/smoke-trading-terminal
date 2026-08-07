@@ -5,13 +5,15 @@ import type {
   Timeframe,
   TimeframeBundle,
 } from "../lib/mtf-level-strategy";
+import type { PaperRiskReason } from "./paper-risk";
 
 export type PaperJournalOutcome =
   | "pending"
   | "take_profit"
   | "stop_loss"
   | "cancelled"
-  | "expired";
+  | "expired"
+  | "skipped_kill_switch";
 
 export type PaperJournalSnapshot = Partial<Record<Timeframe, Candle[]>>;
 
@@ -38,6 +40,7 @@ export type PaperJournalRecord = {
   outcome: PaperJournalOutcome;
   outcomeAt: number | null;
   outcomePrice: number | null;
+  riskGateReasons?: PaperRiskReason[];
 };
 
 const SNAPSHOT_LIMITS: Partial<Record<Timeframe, number>> = {
@@ -95,6 +98,23 @@ export function createPaperJournalRecord(
     outcome: analysis.state === "ready" ? "pending" : "cancelled",
     outcomeAt: analysis.state === "ready" ? null : analysis.evaluatedAt,
     outcomePrice: null,
+    riskGateReasons: [],
+  };
+}
+
+export function markPaperRecordSkippedByRisk(
+  record: PaperJournalRecord,
+  reasons: PaperRiskReason[],
+  at = record.createdAt,
+): PaperJournalRecord {
+  if (record.outcome !== "pending") return record;
+  return {
+    ...record,
+    updatedAt: at,
+    outcome: "skipped_kill_switch",
+    outcomeAt: at,
+    outcomePrice: null,
+    riskGateReasons: [...reasons],
   };
 }
 
