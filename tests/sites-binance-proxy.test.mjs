@@ -8,8 +8,8 @@ const workerSource = await readFile(new URL("../worker/index.ts", import.meta.ur
 test("browser market data uses the same-origin Sites proxy", () => {
   assert.match(clientSource, /const BROWSER_REST = "\/api\/binance"/);
   assert.match(clientSource, /typeof window === "undefined" \? DIRECT_REST : BROWSER_REST/);
-  assert.match(clientSource, /binanceRestBase\(\)\/fapi\/v1\/klines/);
-  assert.match(clientSource, /binanceRestBase\(\)\/fapi\/v1\/ticker\/24hr/);
+  assert.match(clientSource, /`\$\{binanceRestBase\(\)\}\/fapi\/v1\/klines\?\$\{params\}`/);
+  assert.match(clientSource, /`\$\{binanceRestBase\(\)\}\/fapi\/v1\/ticker\/24hr`/);
 });
 
 test("worker proxy is GET-only and restricted to public market data", () => {
