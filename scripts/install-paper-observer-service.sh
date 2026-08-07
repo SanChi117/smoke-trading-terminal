@@ -9,6 +9,7 @@ fi
 REPO_DIR="${SMOKE_REPO_DIR:-$(pwd)}"
 SERVICE_NAME="smoke-paper-observer"
 SERVICE_USER="${SMOKE_SERVICE_USER:-${SUDO_USER:-root}}"
+SERVICE_GROUP="${SMOKE_SERVICE_GROUP:-$(id -gn "${SERVICE_USER}")}" 
 NODE_BIN="${SMOKE_NODE_BIN:-$(command -v node || true)}"
 ENV_FILE="${SMOKE_PAPER_ENV_FILE:-${REPO_DIR}/.env.paper-observer}"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -23,7 +24,7 @@ if [[ -z "${NODE_BIN}" || ! -x "${NODE_BIN}" ]]; then
 fi
 
 mkdir -p "${REPO_DIR}/runtime/paper-observer"
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "${REPO_DIR}/runtime"
+chown -R "${SERVICE_USER}:${SERVICE_GROUP}" "${REPO_DIR}/runtime"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   cat > "${ENV_FILE}" <<'ENV'
@@ -31,7 +32,7 @@ PAPER_OBSERVER_PORT=8092
 PAPER_SCAN_INTERVAL_MS=300000
 PAPER_SCAN_CONCURRENCY=3
 ENV
-  chown "${SERVICE_USER}:${SERVICE_USER}" "${ENV_FILE}"
+  chown "${SERVICE_USER}:${SERVICE_GROUP}" "${ENV_FILE}"
   chmod 600 "${ENV_FILE}"
 fi
 
@@ -44,6 +45,7 @@ After=network-online.target
 [Service]
 Type=simple
 User=${SERVICE_USER}
+Group=${SERVICE_GROUP}
 WorkingDirectory=${REPO_DIR}
 Environment=NODE_ENV=production
 EnvironmentFile=-${ENV_FILE}
