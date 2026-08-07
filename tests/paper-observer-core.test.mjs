@@ -93,9 +93,22 @@ test("resolves a pending trade from future closed 15m candles", () => {
       candle(now + 15 * 60_000, 100, 102.2, 99.8, 102),
     ],
   };
-  const resolved = resolvePendingFromBundle(pending, "BTCUSDT", futureBundle);
+  const resolved = resolvePendingFromBundle(pending, "BTCUSDT", futureBundle, now + 30 * 60_000 + 1);
   assert.equal(resolved[0].outcome, "take_profit");
   assert.equal(resolved[0].outcomePrice, 102);
+});
+
+test("ignores an outcome touch on the still-open 15m candle", () => {
+  const pending = applyAnalysisToJournal([], analysis(), bundle);
+  const futureBundle = {
+    ...bundle,
+    "15m": [
+      ...bundle["15m"],
+      candle(now + 15 * 60_000, 100, 102.2, 98.8, 100),
+    ],
+  };
+  const unresolved = resolvePendingFromBundle(pending, "BTCUSDT", futureBundle, now + 20 * 60_000);
+  assert.equal(unresolved[0].outcome, "pending");
 });
 
 test("preserves a READY signal as skipped when daily kill switch is active", () => {
