@@ -37,6 +37,8 @@ test("allows a paper trade when all limits are clear", () => {
   const gate = evaluatePaperRiskGate([], "BTCUSDT", monday + 60_000);
   assert.equal(gate.allowed, true);
   assert.deepEqual(gate.reasons, []);
+  assert.equal(gate.dailyDrawdownPct, 0);
+  assert.equal(gate.weeklyDrawdownPct, 0);
 });
 
 test("blocks after daily drawdown reaches minus two percent", () => {
@@ -47,7 +49,27 @@ test("blocks after daily drawdown reaches minus two percent", () => {
   const gate = evaluatePaperRiskGate(records, "SOLUSDT", monday + 3_000);
   assert.equal(gate.allowed, false);
   assert.equal(gate.dailyPnlPct, -2);
+  assert.equal(gate.dailyDrawdownPct, -2);
   assert.ok(gate.reasons.includes("DAILY_DRAWDOWN_STOP"));
+});
+
+test("blocks on drawdown from an intraday peak even when net pnl is above the threshold", () => {
+  const records = [
+    record({ decisionId: "win", outcome: "take_profit", rr: 2, outcomeAt: monday + 1_000 }),
+    record({ decisionId: "l1", outcome: "stop_loss", outcomeAt: monday + 2_000 }),
+    record({ decisionId: "l2", symbol: "ETHUSDT", outcome: "stop_loss", outcomeAt: monday + 3_000 }),
+    record({ decisionId: "l3", symbol: "SOLUSDT", outcome: "stop_loss", outcomeAt: monday + 4_000 }),
+  ];
+  const gate = evaluatePaperRiskGate(records, "AVAXUSDT", monday + 5_000, {
+    riskPerTradePct: 1,
+    dailyDrawdownStopPct: -2,
+    weeklyDrawdownStopPct: -10,
+    maxConsecutiveStops: 99,
+    maxOpenPositionsPerSymbol: 1,
+  });
+  assert.equal(gate.dailyPnlPct, -1);
+  assert.equal(gate.dailyDrawdownPct, -3);
+  assert.deepEqual(gate.reasons, ["DAILY_DRAWDOWN_STOP"]);
 });
 
 test("blocks after weekly drawdown reaches minus five percent", () => {
@@ -59,6 +81,7 @@ test("blocks after weekly drawdown reaches minus five percent", () => {
   }));
   const gate = evaluatePaperRiskGate(records, "BTCUSDT", monday + 4 * 86_400_000 + 2_000);
   assert.equal(gate.weeklyPnlPct, -5);
+  assert.equal(gate.weeklyDrawdownPct, -5);
   assert.ok(gate.reasons.includes("WEEKLY_DRAWDOWN_STOP"));
 });
 
@@ -98,7 +121,7 @@ test("blocks a second open paper position on the same symbol", () => {
   assert.deepEqual(gate.reasons, ["SYMBOL_POSITION_ALREADY_OPEN"]);
 });
 
-test("daily stop resets at the next UTC day while weekly pnl remains", () => {
+test("daily stop resets at the next UTC day while weekly drawdown remains", () => {
   const records = [
     record({ decisionId: "a", outcome: "stop_loss", outcomeAt: monday + 1_000 }),
     record({ decisionId: "b", outcome: "stop_loss", outcomeAt: monday + 2_000 }),
@@ -106,6 +129,8 @@ test("daily stop resets at the next UTC day while weekly pnl remains", () => {
   const nextDay = monday + 86_400_000 + 1_000;
   const gate = evaluatePaperRiskGate(records, "SOLUSDT", nextDay);
   assert.equal(gate.dailyPnlPct, 0);
+  assert.equal(gate.dailyDrawdownPct, 0);
   assert.equal(gate.weeklyPnlPct, -2);
+  assert.equal(gate.weeklyDrawdownPct, -2);
   assert.ok(!gate.reasons.includes("DAILY_DRAWDOWN_STOP"));
 });
