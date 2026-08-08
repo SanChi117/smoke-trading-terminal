@@ -1,0 +1,98 @@
+name: v5-30d-research-matrix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-30d-research-matrix.yml'
+      - 'scripts/research-matrix-patch.py'
+      - 'scripts/aggregate-research-matrix.py'
+
+jobs:
+  sweep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include:
+          - { key: baseline, axis: baseline, value: '0' }
+          - { key: rr-12, axis: rr, value: '1.2' }
+          - { key: rr-14, axis: rr, value: '1.4' }
+          - { key: rr-16, axis: rr, value: '1.6' }
+          - { key: rr-20, axis: rr, value: '2.0' }
+          - { key: body-010, axis: body, value: '0.10' }
+          - { key: body-015, axis: body, value: '0.15' }
+          - { key: body-025, axis: body, value: '0.25' }
+          - { key: approach-08, axis: approach, value: '0.8' }
+          - { key: approach-14, axis: approach, value: '1.4' }
+          - { key: approach-17, axis: approach, value: '1.7' }
+          - { key: reaction-fresh-1h, axis: reaction_freshness, value: '1' }
+          - { key: reaction-fresh-3h, axis: reaction_freshness, value: '3' }
+          - { key: reaction-fresh-4h, axis: reaction_freshness, value: '4' }
+          - { key: confirm-window-1h, axis: confirmation_window, value: '1' }
+          - { key: confirm-window-3h, axis: confirmation_window, value: '3' }
+          - { key: confirm-window-4h, axis: confirmation_window, value: '4' }
+          - { key: zone-score-m4, axis: zone_score_delta, value: '-4' }
+          - { key: zone-score-m2, axis: zone_score_delta, value: '-2' }
+          - { key: zone-score-p2, axis: zone_score_delta, value: '2' }
+          - { key: zone-score-p4, axis: zone_score_delta, value: '4' }
+          - { key: stop-075, axis: stop_scale, value: '0.75' }
+          - { key: stop-090, axis: stop_scale, value: '0.90' }
+          - { key: stop-110, axis: stop_scale, value: '1.10' }
+          - { key: stop-125, axis: stop_scale, value: '1.25' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+      - name: Apply isolated matrix candidate
+        run: python scripts/research-matrix-patch.py '${{ matrix.axis }}' '${{ matrix.value }}'
+      - name: Fetch official Binance UM futures history
+        run: python scripts/fetch-binance-data-vision.py
+      - name: Run 19-symbol 30-day backtest
+        run: node --experimental-strip-types scripts/portfolio-30d-backtest.mjs
+      - name: Annotate matrix result
+        env:
+          MATRIX_KEY: '${{ matrix.key }}'
+          MATRIX_AXIS: '${{ matrix.axis }}'
+          MATRIX_VALUE: '${{ matrix.value }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('portfolio-30d-backtest.json')
+          d=json.loads(p.read_text())
+          d['matrixConfig']={'key':os.environ['MATRIX_KEY'],'axis':os.environ['MATRIX_AXIS'],'value':os.environ['MATRIX_VALUE']}
+          out=Path(f"matrix-{os.environ['MATRIX_KEY']}.json")
+          out.write_text(json.dumps(d, separators=(',',':')))
+          print('MATRIX_RESULT', os.environ['MATRIX_KEY'], json.dumps(d['portfolio']))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: matrix-${{ matrix.key }}
+          path: matrix-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: sweep
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: matrix-*
+          path: matrix-results
+          merge-multiple: true
+      - name: Aggregate matrix
+        run: python scripts/aggregate-research-matrix.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-30d-research-matrix-summary
+          path: research-matrix-30d-summary.json
+          if-no-files-found: error
