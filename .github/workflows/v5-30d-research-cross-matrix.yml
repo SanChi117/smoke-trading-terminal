@@ -1,0 +1,85 @@
+name: v5-30d-research-cross-matrix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-30d-research-cross-matrix.yml'
+      - 'scripts/research-matrix-cross-patch.py'
+      - 'scripts/aggregate-research-cross-matrix.py'
+      - 'scripts/research-matrix-patch.py'
+
+jobs:
+  cross:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        rr: ['1.2','1.4','1.6','1.8','2.0']
+        stop_scale: ['0.75','0.90','1.00','1.10','1.25']
+        zone_score_delta: ['-4','0','4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+      - name: Apply isolated cross-matrix candidate
+        run: >-
+          python scripts/research-matrix-cross-patch.py
+          --rr '${{ matrix.rr }}'
+          --stop-scale '${{ matrix.stop_scale }}'
+          --zone-score-delta '${{ matrix.zone_score_delta }}'
+      - name: Fetch official Binance UM futures history
+        run: python scripts/fetch-binance-data-vision.py
+      - name: Run 19-symbol 30-day backtest
+        run: node --experimental-strip-types scripts/portfolio-30d-backtest.mjs
+      - name: Annotate cross-matrix result
+        env:
+          RR: '${{ matrix.rr }}'
+          STOP_SCALE: '${{ matrix.stop_scale }}'
+          ZONE_SCORE_DELTA: '${{ matrix.zone_score_delta }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          d=json.loads(Path('portfolio-30d-backtest.json').read_text())
+          key=f"rr{os.environ['RR']}-stop{os.environ['STOP_SCALE']}-zone{os.environ['ZONE_SCORE_DELTA']}"
+          d['matrixConfig']={
+            'key':key,
+            'rr':os.environ['RR'],
+            'stopScale':os.environ['STOP_SCALE'],
+            'zoneScoreDelta':os.environ['ZONE_SCORE_DELTA'],
+          }
+          out=Path(f'cross-{key}.json')
+          out.write_text(json.dumps(d,separators=(',',':')))
+          print('CROSS_RESULT',key,json.dumps(d['portfolio']))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cross-rr${{ matrix.rr }}-stop${{ matrix.stop_scale }}-zone${{ matrix.zone_score_delta }}
+          path: cross-*.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: cross
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cross-*
+          path: cross-results
+          merge-multiple: true
+      - name: Aggregate cross matrix
+        run: python scripts/aggregate-research-cross-matrix.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-30d-research-cross-matrix-summary
+          path: research-cross-matrix-30d-summary.json
+          if-no-files-found: error
