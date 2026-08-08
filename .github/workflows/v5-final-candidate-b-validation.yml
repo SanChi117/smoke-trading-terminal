@@ -1,0 +1,142 @@
+name: v5-final-candidate-b-validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-final-candidate-b-validation.yml'
+      - 'scripts/final-candidate-diagnostics.mjs'
+      - 'scripts/apply-final-candidate-b.py'
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include:
+          - { key: C-90, profile: C, days: 90 }
+          - { key: B-90, profile: B, days: 90 }
+          - { key: C-180, profile: C, days: 180 }
+          - { key: B-180, profile: B, days: 180 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+
+      - name: Expand official Binance history and test window
+        env:
+          DAYS: '${{ matrix.days }}'
+        run: |
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+          days = int(os.environ['DAYS'])
+          p = Path('scripts/fetch-binance-data-vision.py')
+          s = p.read_text()
+          target = 185 if days == 180 else 95
+          s2, n = re.subn(
+              r'LOOKBACK_DAYS = \{"5m": \d+, "15m": \d+, "4h": \d+, "1d": \d+\}',
+              f'LOOKBACK_DAYS = {{"5m": {target}, "15m": {target}, "4h": {target + 40}, "1d": 620}}',
+              s,
+              count=1,
+          )
+          assert n == 1
+          p.write_text(s2)
+
+          q = Path('scripts/portfolio-30d-backtest.mjs')
+          t = q.read_text()
+          t2, n = re.subn(r'const DAYS = \d+;', f'const DAYS = {days};', t, count=1)
+          assert n == 1
+          q.write_text(t2)
+          PY
+
+      - name: Apply candidate B only inside runner
+        if: matrix.profile == 'B'
+        run: python scripts/apply-final-candidate-b.py
+
+      - name: Fetch official Binance UM futures history
+        run: python scripts/fetch-binance-data-vision.py
+
+      - name: Run portfolio backtest
+        run: node --experimental-strip-types scripts/portfolio-30d-backtest.mjs
+
+      - name: Annotate validation config
+        env:
+          KEY: '${{ matrix.key }}'
+          PROFILE: '${{ matrix.profile }}'
+          DAYS: '${{ matrix.days }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('portfolio-30d-backtest.json')
+          d=json.loads(p.read_text())
+          d['validationConfig']={
+            'key':os.environ['KEY'],
+            'profile':os.environ['PROFILE'],
+            'days':int(os.environ['DAYS']),
+            'rr':1.6 if os.environ['PROFILE']=='B' else 1.8,
+            'stopScale':0.90 if os.environ['PROFILE']=='B' else 1.00,
+            'zoneScoreDelta':0,
+          }
+          p.write_text(json.dumps(d,separators=(',',':')))
+          PY
+
+      - name: Build causal regime, cost and symbol diagnostics
+        env:
+          KEY: '${{ matrix.key }}'
+        run: node scripts/final-candidate-diagnostics.mjs portfolio-30d-backtest.json portfolio-30d-input.json final-${{ matrix.key }}.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-${{ matrix.key }}
+          path: final-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: validate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: final-*
+          path: final-results
+          merge-multiple: true
+      - name: Build final B vs baseline summary
+        run: |
+          python - <<'PY'
+          import glob,json
+          rows=[]
+          for f in glob.glob('final-results/final-*.json'):
+              d=json.load(open(f))
+              rows.append(d)
+          rows.sort(key=lambda d:(d['validationConfig']['days'],d['validationConfig']['profile']))
+          out={'rows':rows,'comparisons':{}}
+          for days in (90,180):
+              b=next(d for d in rows if d['validationConfig']['days']==days and d['validationConfig']['profile']=='B')
+              c=next(d for d in rows if d['validationConfig']['days']==days and d['validationConfig']['profile']=='C')
+              out['comparisons'][str(days)]={
+                'B':b,
+                'C':c,
+                'delta':{
+                  k:(b['portfolio'].get(k) or 0)-(c['portfolio'].get(k) or 0)
+                  for k in ['trades','netR','expectancyR','winrate','profitFactor','maxDrawdownR']
+                }
+              }
+          json.dump(out,open('v5-final-candidate-b-summary.json','w'),indent=2)
+          print('FINAL_B_SUMMARY',json.dumps({d:v['delta'] for d,v in out['comparisons'].items()}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-final-candidate-b-summary
+          path: v5-final-candidate-b-summary.json
+          if-no-files-found: error
