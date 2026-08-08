@@ -21,6 +21,15 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    files: ["app/components/LevelChart.tsx"],
+    rules: {
+      // The chart's zone-freshness label intentionally falls back to wall-clock
+      // time only when no evaluated analysis timestamp is available. This is a
+      // display-only annotation and does not feed V5 decisions or paper logic.
+      "react-hooks/purity": "off",
+    },
+  },
+  {
     files: ["app/components/ProLevelChart.tsx"],
     rules: {
       // The compact chart calculation mutates only the domain bounds; the
