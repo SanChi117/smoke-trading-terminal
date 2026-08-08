@@ -1,0 +1,34 @@
+name: portfolio-30d-backtest
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/portfolio-30d-backtest.mjs'
+      - 'scripts/fetch-binance-data-vision.py'
+      - '.github/workflows/portfolio-30d-backtest.yml'
+      - 'app/lib/mtf-level-strategy.ts'
+      - 'app/lib/level/**'
+
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.16.0
+          cache: npm
+      - run: npm ci
+      - name: Fetch official Binance UM futures history
+        run: python scripts/fetch-binance-data-vision.py
+      - name: Run 19-symbol 30-day backtest
+        run: node --experimental-strip-types scripts/portfolio-30d-backtest.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-30d-backtest
+          path: portfolio-30d-backtest.json
+          if-no-files-found: error
