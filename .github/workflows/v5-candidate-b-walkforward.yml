@@ -1,0 +1,97 @@
+name: v5-candidate-b-walkforward
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-candidate-b-walkforward.yml'
+      - 'scripts/apply-final-candidate-b.py'
+      - 'scripts/summarize-candidate-b-fixed-audit.mjs'
+      - 'scripts/aggregate-candidate-b-walkforward.mjs'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - { key: calibration-a-C, role: calibration, profile: C, end: '2025-05-31T23:55:00.000Z' }
+          - { key: calibration-a-B, role: calibration, profile: B, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a-C, role: validation, profile: C, end: '2025-07-31T23:55:00.000Z' }
+          - { key: validation-a-B, role: validation, profile: B, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a-C, role: test, profile: C, end: '2025-09-30T23:55:00.000Z' }
+          - { key: test-a-B, role: test, profile: B, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b-C, role: calibration, profile: C, end: '2025-11-30T23:55:00.000Z' }
+          - { key: calibration-b-B, role: calibration, profile: B, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b-C, role: validation, profile: C, end: '2026-03-31T23:55:00.000Z' }
+          - { key: validation-b-B, role: validation, profile: B, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b-C, role: test, profile: C, end: '2026-07-31T23:55:00.000Z' }
+          - { key: test-b-B, role: test, profile: B, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+
+      - name: Apply candidate B only inside runner
+        if: matrix.profile == 'B'
+        run: |
+          python scripts/apply-final-candidate-b.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/run_level_flow_logic_audit.mjs')
+          s=p.read_text()
+          old='if ((analysis.rr ?? 0) < 1.8) failures.push("READY with RR below 1.8");'
+          new='if ((analysis.rr ?? 0) < 1.6) failures.push("READY with RR below 1.6");'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new))
+          PY
+
+      - name: Run fixed 60-day audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+
+      - name: Summarize fixed window
+        env:
+          KEY: '${{ matrix.key }}'
+          PROFILE: '${{ matrix.profile }}'
+          ROLE: '${{ matrix.role }}'
+          END_ISO: '${{ matrix.end }}'
+          AUDIT_DAYS: '60'
+        run: node scripts/summarize-candidate-b-fixed-audit.mjs runtime/level-flow-logic-audit/logic-audit.json window-${{ matrix.key }}.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: window-${{ matrix.key }}
+          path: window-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: window-*
+          path: candidate-b-walkforward-results
+          merge-multiple: true
+      - name: Aggregate six-window walk-forward
+        run: node scripts/aggregate-candidate-b-walkforward.mjs candidate-b-walkforward-results candidate-b-walkforward-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-b-walkforward-summary
+          path: candidate-b-walkforward-summary.json
+          if-no-files-found: error
