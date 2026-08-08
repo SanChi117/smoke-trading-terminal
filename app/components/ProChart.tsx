@@ -93,7 +93,7 @@ function distanceToSegment(px: number, py: number, ax: number, ay: number, bx: n
 }
 
 export default function ProChart({ symbol, timeframe, candles, analysis, events, loading }: Props) {
-  const [visibleCount, setVisibleCount] = useState(150);
+  const [visibleCount, setVisibleCount] = useState(84);
   const [offset, setOffset] = useState(0);
   const [priceScale, setPriceScale] = useState(1);
   const [crosshair, setCrosshair] = useState<number | null>(null);
@@ -102,18 +102,18 @@ export default function ProChart({ symbol, timeframe, candles, analysis, events,
   const [draft, setDraft] = useState<Drawing | null>(null);
   const [hoveredEvent, setHoveredEvent] = useState<{ event: JournalEvent; x: number; y: number } | null>(null);
   const [indicators, setIndicators] = useState<Record<IndicatorKey, boolean>>({
-    ema20: true,
-    ema50: true,
+    ema20: false,
+    ema50: false,
     ema200: false,
     vwap: false,
     bollinger: false,
     atr: false,
     volume: true,
-    rsi: true,
+    rsi: false,
     zones: true,
     structure: true,
-    swings: true,
-    fvg: true,
+    swings: false,
+    fvg: false,
     range: true,
     route: true,
     reaction: true,
@@ -143,7 +143,7 @@ export default function ProChart({ symbol, timeframe, candles, analysis, events,
     setOffset(0);
     setPriceScale(1);
     setCrosshair(null);
-    setVisibleCount(timeframe === "1w" ? 90 : timeframe === "1d" ? 120 : 150);
+    setVisibleCount(timeframe === "1w" ? 64 : timeframe === "1d" ? 72 : 84);
   }, [symbol, timeframe]);
 
   const windowData = useMemo(() => {
@@ -207,7 +207,7 @@ export default function ProChart({ symbol, timeframe, candles, analysis, events,
     const x = (index: number) => LEFT + (index + 0.5) / visible.length * PLOT_WIDTH;
     const y = (price: number) => TOP + (high - price) / Math.max(high - low, 1e-9) * (PRICE_BOTTOM - TOP);
     const indexForTime = (time: number) => nearestIndex(visible, time);
-    const candleWidth = Math.max(2, Math.min(14, PLOT_WIDTH / visible.length * 0.68));
+    const candleWidth = Math.max(4, Math.min(16, PLOT_WIDTH / visible.length * 0.76));
     const maxVolume = Math.max(...visible.map((candle) => candle.volume), 1);
     return {
       visible,
