@@ -1,0 +1,42 @@
+name: experiment-rr-gate-16
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/experiment-rr-gate-16.yml'
+
+jobs:
+  candidate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+      - name: Apply isolated candidate RR gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/lib/level/analysis-v4-audit.ts')
+          s = p.read_text()
+          old = 'if (rr < 1.8) blockers.push(`До синхронизированной ${targetZone.timeframe.toUpperCase()} цели только ${rr.toFixed(2)}R`);'
+          new = 'if (rr < 1.6) blockers.push(`До синхронизированной ${targetZone.timeframe.toUpperCase()} цели только ${rr.toFixed(2)}R`);'
+          assert s.count(old) == 1, f'expected one RR gate, found {s.count(old)}'
+          p.write_text(s.replace(old, new))
+          print('CANDIDATE synchronized RR gate: 1.8 -> 1.6')
+          PY
+      - name: Fetch official Binance UM futures history
+        run: python scripts/fetch-binance-data-vision.py
+      - name: Run candidate 19-symbol 30-day backtest
+        run: node --experimental-strip-types scripts/portfolio-30d-backtest.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experiment-rr-gate-16
+          path: portfolio-30d-backtest.json
+          if-no-files-found: error
