@@ -81,6 +81,12 @@ function highVol4h(raw: TimeframeBundle, now: number): boolean {
   return rank >= 75;
 }
 
+function locationSweepNeedsBaseline(result: ReturnType<typeof analyzeB>): boolean {
+  const isLocation = result.activeZone?.label.includes("[MODEL:location]") ?? false;
+  const isSweep = result.reaction.type === "sweep_reclaim";
+  return isLocation && isSweep && (result.rr ?? 0) < 1.75;
+}
+
 export function analyzeLevelFlow(symbol: string, raw: TimeframeBundle, now = Date.now()) {
   const baseline = analyzeBaseline(symbol, raw, now);
   if (baseline.state === "ready") return baseline;
@@ -93,7 +99,8 @@ export function analyzeLevelFlow(symbol: string, raw: TimeframeBundle, now = Dat
   if (!alignedTrend || highVol4h(raw, now)) return baseline;
 
   const rescued = analyzeB(symbol, raw, now);
-  return rescued.state === "ready" ? rescued : baseline;
+  if (rescued.state !== "ready") return baseline;
+  return locationSweepNeedsBaseline(rescued) ? baseline : rescued;
 }
 '''
     ANALYSIS.write_text(wrapper)
