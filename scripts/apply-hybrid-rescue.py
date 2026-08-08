@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 ROOT = Path('app/lib/level')
@@ -30,23 +29,17 @@ def main() -> None:
     (ROOT / 'analysis-v5-baseline-research.ts').write_text(v5_base)
 
     # Candidate B copies: RR floor 1.6 and stop buffers x0.90.
-    pattern = re.compile(
-        r'const bufferMultiplier = trendStrength === "strong" && reaction\\.score >= 80\\n'
-        r'\\s*\\? 1\\.5\\n'
-        r'\\s*: trendStrength === "weak" \\|\\| reaction\\.score < 68\\n'
-        r'\\s*\\? 2\\n'
-        r'\\s*: 1\\.75;'
-    )
-    replacement = (
-        'const bufferMultiplier = trendStrength === "strong" && reaction.score >= 80\n'
-        '      ? 1.35\n'
-        '      : trendStrength === "weak" || reaction.score < 68\n'
-        '        ? 1.8\n'
-        '        : 1.575;'
-    )
-    v3_b, count = pattern.subn(replacement, v3)
-    if count != 1:
-        raise RuntimeError(f'expected one bufferMultiplier block, found {count}')
+    old_buffer = '''const bufferMultiplier = trendStrength === "strong" && reaction.score >= 80
+      ? 1.5
+      : trendStrength === "weak" || reaction.score < 68
+        ? 2
+        : 1.75;'''
+    new_buffer = '''const bufferMultiplier = trendStrength === "strong" && reaction.score >= 80
+      ? 1.35
+      : trendStrength === "weak" || reaction.score < 68
+        ? 1.8
+        : 1.575;'''
+    v3_b = replace_exact(v3, old_buffer, new_buffer)
     (ROOT / 'analysis-v3-b-research.ts').write_text(v3_b)
 
     v4_b = replace_exact(v4, 'from "./analysis-v3.ts";', 'from "./analysis-v3-b-research.ts";')
