@@ -25,9 +25,9 @@ jobs:
           from pathlib import Path
           p = Path('scripts/fetch-binance-data-vision.py')
           s = p.read_text()
-          old = 'LOOKBACK_DAYS = {"5m": 34, "15m": 34, "4h": 105, "1d": 300, "1w": 610}'
-          new = 'LOOKBACK_DAYS = {"5m": 95, "15m": 95, "4h": 135, "1d": 300, "1w": 610}'
-          assert s.count(old) == 1
+          old = 'LOOKBACK_DAYS = {"5m": 34, "15m": 34, "4h": 105, "1d": 620}'
+          new = 'LOOKBACK_DAYS = {"5m": 95, "15m": 95, "4h": 135, "1d": 620}'
+          assert s.count(old) == 1, f'lookback matcher count={s.count(old)}'
           p.write_text(s.replace(old, new))
           q = Path('scripts/portfolio-30d-backtest.mjs')
           t = q.read_text()
