@@ -1,0 +1,75 @@
+name: experiment-rr-gate-16-90d
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/experiment-rr-gate-16-90d.yml'
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+      - name: Expand official Binance history and test window to 90 days
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/fetch-binance-data-vision.py')
+          s = p.read_text()
+          old = 'LOOKBACK_DAYS = {"5m": 34, "15m": 34, "4h": 105, "1d": 300, "1w": 610}'
+          new = 'LOOKBACK_DAYS = {"5m": 95, "15m": 95, "4h": 135, "1d": 300, "1w": 610}'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+          q = Path('scripts/portfolio-30d-backtest.mjs')
+          t = q.read_text()
+          assert t.count('const DAYS = 30;') == 1
+          q.write_text(t.replace('const DAYS = 30;', 'const DAYS = 90;'))
+          PY
+      - name: Fetch official Binance UM futures history
+        run: python scripts/fetch-binance-data-vision.py
+      - name: Run 90-day frozen baseline
+        run: |
+          node --experimental-strip-types scripts/portfolio-30d-backtest.mjs
+          mv portfolio-30d-backtest.json baseline-90d.json
+      - name: Apply isolated RR 1.6 candidate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/lib/level/analysis-v4-audit.ts')
+          s = p.read_text()
+          old = 'if (rr < 1.8) blockers.push(`До синхронизированной ${targetZone.timeframe.toUpperCase()} цели только ${rr.toFixed(2)}R`);'
+          new = 'if (rr < 1.6) blockers.push(`До синхронизированной ${targetZone.timeframe.toUpperCase()} цели только ${rr.toFixed(2)}R`);'
+          assert s.count(old) == 1
+          p.write_text(s.replace(old, new))
+          PY
+      - name: Run 90-day RR 1.6 candidate
+        run: |
+          node --experimental-strip-types scripts/portfolio-30d-backtest.mjs
+          mv portfolio-30d-backtest.json candidate-90d.json
+      - name: Build comparison
+        run: |
+          python - <<'PY'
+          import json
+          b=json.load(open('baseline-90d.json'))
+          c=json.load(open('candidate-90d.json'))
+          out={'baseline':b['portfolio'],'candidate':c['portfolio'],'delta':{k:(c['portfolio'].get(k) or 0)-(b['portfolio'].get(k) or 0) for k in ['trades','takeProfit','stopLoss','netR','winRate','profitFactor','maxDrawdownR']}}
+          json.dump(out,open('rr16-90d-comparison.json','w'),indent=2)
+          print('RR16_90D_COMPARISON',json.dumps(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experiment-rr-gate-16-90d
+          path: |
+            baseline-90d.json
+            candidate-90d.json
+            rr16-90d-comparison.json
+          if-no-files-found: error
