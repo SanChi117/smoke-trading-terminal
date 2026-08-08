@@ -1,0 +1,103 @@
+name: v5-hybrid-rescue-walkforward
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-hybrid-rescue-walkforward.yml'
+      - 'scripts/apply-hybrid-rescue.py'
+      - 'scripts/aggregate-hybrid-rescue.mjs'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - { key: calibration-a-C, role: calibration, profile: C, end: '2025-05-31T23:55:00.000Z' }
+          - { key: calibration-a-R, role: calibration, profile: R, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a-C, role: validation, profile: C, end: '2025-07-31T23:55:00.000Z' }
+          - { key: validation-a-R, role: validation, profile: R, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a-C, role: test, profile: C, end: '2025-09-30T23:55:00.000Z' }
+          - { key: test-a-R, role: test, profile: R, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b-C, role: calibration, profile: C, end: '2025-11-30T23:55:00.000Z' }
+          - { key: calibration-b-R, role: calibration, profile: R, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b-C, role: validation, profile: C, end: '2026-03-31T23:55:00.000Z' }
+          - { key: validation-b-R, role: validation, profile: R, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b-C, role: test, profile: C, end: '2026-07-31T23:55:00.000Z' }
+          - { key: test-b-R, role: test, profile: R, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+
+      - name: Apply causal rescue only inside runner
+        if: matrix.profile == 'R'
+        run: |
+          python scripts/apply-hybrid-rescue.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/run_level_flow_logic_audit.mjs')
+          s=p.read_text()
+          old='if ((analysis.rr ?? 0) < 1.8) failures.push("READY with RR below 1.8");'
+          new='if ((analysis.rr ?? 0) < 1.6) failures.push("READY with RR below 1.6");'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new))
+          PY
+
+      - name: Run fixed 60-day audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+
+      - name: Annotate raw audit
+        env:
+          KEY: '${{ matrix.key }}'
+          PROFILE: '${{ matrix.profile }}'
+          ROLE: '${{ matrix.role }}'
+          END_ISO: '${{ matrix.end }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(p.read_text())
+          d['researchConfig']={'key':os.environ['KEY'],'profile':os.environ['PROFILE'],'role':os.environ['ROLE'],'endIso':os.environ['END_ISO']}
+          Path(f"rescue-{os.environ['KEY']}.json").write_text(json.dumps(d,separators=(',',':')))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rescue-${{ matrix.key }}
+          path: rescue-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rescue-*
+          path: hybrid-rescue-results
+          merge-multiple: true
+      - name: Aggregate rescue walk-forward
+        run: node scripts/aggregate-hybrid-rescue.mjs hybrid-rescue-results v5-hybrid-rescue-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-hybrid-rescue-summary
+          path: v5-hybrid-rescue-summary.json
+          if-no-files-found: error
