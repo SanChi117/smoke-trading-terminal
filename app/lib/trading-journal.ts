@@ -35,16 +35,59 @@ export function inferSetupModel(analysis: MtfLevelAnalysis): JournalEntry["model
   return "WATCH";
 }
 
+function stableNumber(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? "none" : value.toPrecision(12);
+}
+
 export function journalSignature(analysis: MtfLevelAnalysis): string {
+  const zone = analysis.activeZone;
   return [
     analysis.symbol,
     analysis.state,
     analysis.side ?? "none",
-    analysis.activeZone?.id ?? "no-zone",
+    zone?.timeframe ?? "no-tf",
+    zone?.source ?? "no-source",
+    zone?.label ?? "no-zone",
+    stableNumber(zone?.low),
+    stableNumber(zone?.high),
+    analysis.route4h.state,
+    analysis.reaction.type,
     analysis.reaction.time ?? "no-reaction",
-    analysis.entry ?? "no-entry",
+    stableNumber(analysis.entry),
+    stableNumber(analysis.stop),
+    stableNumber(analysis.target),
+    stableNumber(analysis.rr),
+    analysis.confidence,
     analysis.reason,
+    analysis.blockers.join("~"),
   ].join("|");
+}
+
+export function journalEntrySignature(entry: JournalEntry): string {
+  return [
+    entry.symbol,
+    entry.status,
+    entry.side ?? "none",
+    entry.model,
+    entry.level,
+    stableNumber(entry.levelPrice),
+    entry.route4h,
+    entry.reaction,
+    stableNumber(entry.entry),
+    stableNumber(entry.stop),
+    stableNumber(entry.target),
+    stableNumber(entry.rr),
+    entry.confidence,
+    entry.reason,
+    entry.blockers.join("~"),
+    entry.trace.map((step) => `${step.label}:${step.state}:${step.detail}`).join("~"),
+  ].join("|");
+}
+
+export function prependJournalEntry(entries: JournalEntry[], entry: JournalEntry, limit = 1000): JournalEntry[] {
+  const signature = journalEntrySignature(entry);
+  const duplicate = entries.find((candidate) => candidate.symbol === entry.symbol && journalEntrySignature(candidate) === signature);
+  return duplicate ? entries : [entry, ...entries].slice(0, limit);
 }
 
 export function journalFromAnalysis(analysis: MtfLevelAnalysis, previous?: MtfLevelAnalysis | null): JournalEntry | null {
