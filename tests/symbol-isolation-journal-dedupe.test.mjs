@@ -50,9 +50,9 @@ test("journal keeps a real state transition", () => {
 
 test("TerminalV6 gates bundle analysis and rendering by bundle owner symbol", async () => {
   const source = await readFile(new URL("../app/components/TerminalV6.tsx", import.meta.url), "utf8");
-  assert.match(source, /\[bundleSymbol,setBundleSymbol\]/);
-  assert.match(source, /bundle&&bundleSymbol===selected/);
-  assert.match(source, /const visibleBundle=bundleSymbol===selected\?bundle:null/);
-  assert.match(source, /const visibleAnalysis=analysis\?\.symbol===selected\?analysis:null/);
-  assert.match(source, /if\(!current\|\|bundleSymbol!==selected\)return current/);
+  assert.ok(source.includes("[bundleSymbol,setBundleSymbol]"));
+  assert.ok(source.includes("bundle&&bundleSymbol===selected"));
+  assert.ok(source.includes("const visibleBundle=bundleSymbol===selected?bundle:null"));
+  assert.ok(source.includes("visibleAnalysis=analysis?.symbol===selected?analysis:null"));
+  assert.ok(source.includes("if(!current||bundleSymbol!==selected)return current"));
 });
