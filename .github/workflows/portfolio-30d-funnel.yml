@@ -1,0 +1,34 @@
+name: portfolio-30d-funnel
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/portfolio-30d-funnel.mjs'
+      - 'scripts/fetch-binance-data-vision.py'
+      - '.github/workflows/portfolio-30d-funnel.yml'
+      - 'app/lib/level/**'
+      - 'app/lib/mtf-level-strategy.ts'
+
+jobs:
+  funnel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+      - name: Fetch official Binance UM futures history
+        run: python scripts/fetch-binance-data-vision.py
+      - name: Run 19-symbol 30-day funnel audit
+        run: node --experimental-strip-types scripts/portfolio-30d-funnel.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portfolio-30d-funnel
+          path: portfolio-30d-funnel.json
+          if-no-files-found: error
