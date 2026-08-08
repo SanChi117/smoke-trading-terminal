@@ -1,0 +1,124 @@
+name: v5-hybrid-walkforward
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-hybrid-walkforward.yml'
+      - 'scripts/apply-hybrid-profile.py'
+      - 'app/lib/level/research-hybrid-profile.ts'
+      - 'scripts/run_fixed_level_audit.mjs'
+      - 'scripts/run_level_flow_logic_audit.mjs'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - { key: calibration-a-C, role: calibration, profile: C, end: '2025-05-31T23:55:00.000Z' }
+          - { key: calibration-a-H, role: calibration, profile: H, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a-C, role: validation, profile: C, end: '2025-07-31T23:55:00.000Z' }
+          - { key: validation-a-H, role: validation, profile: H, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a-C, role: test, profile: C, end: '2025-09-30T23:55:00.000Z' }
+          - { key: test-a-H, role: test, profile: H, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b-C, role: calibration, profile: C, end: '2025-11-30T23:55:00.000Z' }
+          - { key: calibration-b-H, role: calibration, profile: H, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b-C, role: validation, profile: C, end: '2026-03-31T23:55:00.000Z' }
+          - { key: validation-b-H, role: validation, profile: H, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b-C, role: test, profile: C, end: '2026-07-31T23:55:00.000Z' }
+          - { key: test-b-H, role: test, profile: H, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Apply causal hybrid only inside runner
+        if: matrix.profile == 'H'
+        run: python scripts/apply-hybrid-profile.py
+      - name: Run fixed 60-day audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Annotate raw audit
+        env:
+          KEY: '${{ matrix.key }}'
+          ROLE: '${{ matrix.role }}'
+          PROFILE: '${{ matrix.profile }}'
+          END_ISO: '${{ matrix.end }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          src=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(src.read_text())
+          d['hybridConfig']={'key':os.environ['KEY'],'role':os.environ['ROLE'],'profile':os.environ['PROFILE'],'endIso':os.environ['END_ISO']}
+          Path(f"hybrid-{os.environ['KEY']}.json").write_text(json.dumps(d,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hybrid-${{ matrix.key }}
+          path: hybrid-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hybrid-*
+          path: hybrid-results
+          merge-multiple: true
+      - name: Build causal hybrid summary
+        run: |
+          python - <<'PY'
+          import glob,json,math
+          def summarize(trades):
+              trades=sorted(trades,key=lambda t:t.get('entryTime',''))
+              profit=sum(t.get('netR',0) for t in trades if t.get('netR',0)>0)
+              loss=-sum(t.get('netR',0) for t in trades if t.get('netR',0)<0)
+              eq=peak=dd=0.0
+              for t in trades:
+                  eq+=t.get('netR',0); peak=max(peak,eq); dd=max(dd,peak-eq)
+              return {'trades':len(trades),'netR':round(sum(t.get('netR',0) for t in trades),4),'expectancyR':round(sum(t.get('netR',0) for t in trades)/max(len(trades),1),4),'winrate':round(sum(1 for t in trades if t.get('netR',0)>0)/max(len(trades),1)*100,2),'profitFactor':round(profit/loss,4) if loss>0 else None,'maxDrawdownR':round(dd,4)}
+          rows=[]
+          for f in glob.glob('hybrid-results/hybrid-*.json'):
+              d=json.load(open(f)); trades=[]
+              for r in d['results']:
+                  trades += r['backtest']['trades']
+              rows.append({'config':d['hybridConfig'],'trades':trades,'invariantFailureCount':d.get('invariantFailureCount',0),'metrics':summarize(trades)})
+          rows.sort(key=lambda r:(r['config']['endIso'],r['config']['profile']))
+          def aggregate(profile,role=None):
+              use=[r for r in rows if r['config']['profile']==profile and (role is None or r['config']['role']==role)]
+              trades=[t for r in use for t in r['trades']]
+              regimes={}
+              for rg in ['trend_up','trend_down','high_vol','range']:
+                  regimes[rg]=summarize([t for t in trades if t.get('regime')==rg])
+              return {'metrics':summarize(trades),'perRegime':regimes,'invariantFailureCount':sum(r['invariantFailureCount'] for r in use),'trades':trades}
+          out={'version':'V5_CAUSAL_HYBRID_B_IN_TREND_ONLY','definition':'B params (RR 1.6, stop x0.90) only when closed-candle 1D and 4H structure align and causal 4H ATR percentile is below 75; otherwise frozen baseline.','rows':[{k:v for k,v in r.items() if k!='trades'} for r in rows],'comparisons':{}}
+          for role in ['overall','calibration','validation','test']:
+              rr=None if role=='overall' else role
+              H=aggregate('H',rr); C=aggregate('C',rr)
+              out['comparisons'][role]={'H':H,'C':C,'delta':{k:(H['metrics'].get(k) or 0)-(C['metrics'].get(k) or 0) for k in ['trades','netR','expectancyR','winrate','profitFactor','maxDrawdownR']}}
+          out['verdict']='PAPER_READY_CANDIDATE' if all(out['comparisons'][r]['H']['metrics']['netR']>0 and (out['comparisons'][r]['H']['metrics']['profitFactor'] or 0)>1 for r in ['calibration','validation','test']) else 'RESEARCH_ONLY_UNSTABLE'
+          json.dump(out,open('v5-hybrid-walkforward-summary.json','w'),indent=2)
+          print('HYBRID_SUMMARY',json.dumps({r:{'H':out['comparisons'][r]['H']['metrics'],'C':out['comparisons'][r]['C']['metrics']} for r in ['overall','calibration','validation','test']}))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-hybrid-walkforward-summary
+          path: v5-hybrid-walkforward-summary.json
+          if-no-files-found: error
