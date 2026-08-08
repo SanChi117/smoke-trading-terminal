@@ -1,0 +1,136 @@
+name: v5-ab-long-horizon
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-ab-long-horizon.yml'
+      - 'scripts/research-matrix-cross-patch.py'
+      - 'scripts/research-matrix-patch.py'
+      - 'scripts/fetch-binance-data-vision.py'
+      - 'scripts/portfolio-30d-backtest.mjs'
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - { key: C-90,  profile: C, days: 90,  rr: '1.8', stop: '1.00', zone: '0' }
+          - { key: A-90,  profile: A, days: 90,  rr: '1.6', stop: '0.75', zone: '0' }
+          - { key: B-90,  profile: B, days: 90,  rr: '1.6', stop: '0.90', zone: '0' }
+          - { key: C-180, profile: C, days: 180, rr: '1.8', stop: '1.00', zone: '0' }
+          - { key: A-180, profile: A, days: 180, rr: '1.6', stop: '0.75', zone: '0' }
+          - { key: B-180, profile: B, days: 180, rr: '1.6', stop: '0.90', zone: '0' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+
+      - name: Expand Binance history and test window
+        env:
+          DAYS: '${{ matrix.days }}'
+        run: |
+          python - <<'PY'
+          import os, re
+          from pathlib import Path
+          days = int(os.environ['DAYS'])
+          p = Path('scripts/fetch-binance-data-vision.py')
+          s = p.read_text()
+          target = 185 if days == 180 else 95
+          s2, n = re.subn(
+              r'LOOKBACK_DAYS = \{"5m": \d+, "15m": \d+, "4h": \d+, "1d": \d+\}',
+              f'LOOKBACK_DAYS = {{"5m": {target}, "15m": {target}, "4h": {target + 40}, "1d": 620}}',
+              s,
+              count=1,
+          )
+          assert n == 1
+          p.write_text(s2)
+
+          q = Path('scripts/portfolio-30d-backtest.mjs')
+          t = q.read_text()
+          t2, n = re.subn(r'const DAYS = \d+;', f'const DAYS = {days};', t, count=1)
+          assert n == 1
+          q.write_text(t2)
+          PY
+
+      - name: Apply candidate profile
+        if: matrix.profile != 'C'
+        run: python scripts/research-matrix-cross-patch.py --rr '${{ matrix.rr }}' --stop-scale '${{ matrix.stop }}' --zone-score-delta '${{ matrix.zone }}'
+
+      - name: Fetch official Binance UM futures history
+        run: python scripts/fetch-binance-data-vision.py
+
+      - name: Run portfolio backtest
+        run: node --experimental-strip-types scripts/portfolio-30d-backtest.mjs
+
+      - name: Annotate long-horizon result
+        env:
+          KEY: '${{ matrix.key }}'
+          PROFILE: '${{ matrix.profile }}'
+          DAYS: '${{ matrix.days }}'
+          RR: '${{ matrix.rr }}'
+          STOP: '${{ matrix.stop }}'
+          ZONE: '${{ matrix.zone }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('portfolio-30d-backtest.json')
+          d=json.loads(p.read_text())
+          d['validationConfig']={
+            'key':os.environ['KEY'],'profile':os.environ['PROFILE'],'days':int(os.environ['DAYS']),
+            'rr':float(os.environ['RR']),'stopScale':float(os.environ['STOP']),'zoneScoreDelta':int(os.environ['ZONE'])
+          }
+          out=Path(f"ab-{os.environ['KEY']}.json")
+          out.write_text(json.dumps(d,separators=(',',':')))
+          print('AB_RESULT', os.environ['KEY'], json.dumps(d['portfolio']))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ab-${{ matrix.key }}
+          path: ab-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: compare
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ab-*
+          path: ab-results
+          merge-multiple: true
+      - name: Build comparison summary
+        run: |
+          python - <<'PY'
+          import glob,json
+          rows=[]
+          for f in glob.glob('ab-results/ab-*.json'):
+              d=json.load(open(f))
+              c=d['validationConfig']; p=d['portfolio']
+              row={**c,**p}
+              rows.append(row)
+          rows.sort(key=lambda r:(r['days'],r['profile']))
+          by_days={}
+          for r in rows:
+              by_days.setdefault(str(r['days']),[]).append(r)
+          out={'rows':rows,'byDays':by_days}
+          json.dump(out,open('v5-ab-long-horizon-summary.json','w'),indent=2)
+          print('AB_SUMMARY',json.dumps(out))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-ab-long-horizon-summary
+          path: v5-ab-long-horizon-summary.json
+          if-no-files-found: error
