@@ -82,7 +82,7 @@ function highVol4h(raw: TimeframeBundle, now: number): boolean {
 }
 
 function locationSweepNeedsBaseline(result: ReturnType<typeof analyzeB>): boolean {
-  const isLocation = result.activeZone?.label.includes("[MODEL:location]") ?? false;
+  const isLocation = result.setupModel === "location";
   const isSweep = result.reaction.type === "sweep_reclaim";
   return isLocation && isSweep && (result.rr ?? 0) < 1.75;
 }
