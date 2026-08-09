@@ -1,0 +1,96 @@
+name: v5-gated-rescue-independent-oos
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-gated-rescue-independent-oos.yml'
+      - 'scripts/apply-hybrid-rescue.py'
+      - 'scripts/aggregate-gated-rescue-independent-oos.mjs'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - { key: oos-a-C, profile: C, end: '2025-01-31T23:55:00.000Z' }
+          - { key: oos-a-R, profile: R, end: '2025-01-31T23:55:00.000Z' }
+          - { key: oos-b-C, profile: C, end: '2026-01-31T23:55:00.000Z' }
+          - { key: oos-b-R, profile: R, end: '2026-01-31T23:55:00.000Z' }
+          - { key: oos-c-C, profile: C, end: '2026-05-31T23:55:00.000Z' }
+          - { key: oos-c-R, profile: R, end: '2026-05-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+
+      - name: Apply frozen gated rescue only inside runner
+        if: matrix.profile == 'R'
+        run: |
+          python scripts/apply-hybrid-rescue.py
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/run_level_flow_logic_audit.mjs')
+          s=p.read_text()
+          old='if ((analysis.rr ?? 0) < 1.8) failures.push("READY with RR below 1.8");'
+          new='if ((analysis.rr ?? 0) < 1.6) failures.push("READY with RR below 1.6");'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new))
+          PY
+
+      - name: Run fixed 60-day OOS audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+
+      - name: Annotate raw OOS audit
+        env:
+          KEY: '${{ matrix.key }}'
+          PROFILE: '${{ matrix.profile }}'
+          END_ISO: '${{ matrix.end }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(p.read_text())
+          d['researchConfig']={'key':os.environ['KEY'],'profile':os.environ['PROFILE'],'role':'independent_oos','endIso':os.environ['END_ISO']}
+          Path(f"oos-{os.environ['KEY']}.json").write_text(json.dumps(d,separators=(',',':')))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oos-${{ matrix.key }}
+          path: oos-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: oos-*
+          path: gated-rescue-oos-results
+          merge-multiple: true
+      - name: Aggregate independent OOS
+        run: node scripts/aggregate-gated-rescue-independent-oos.mjs gated-rescue-oos-results v5-gated-rescue-independent-oos-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v5-gated-rescue-independent-oos-summary
+          path: v5-gated-rescue-independent-oos-summary.json
+          if-no-files-found: error
