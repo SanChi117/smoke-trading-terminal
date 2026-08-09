@@ -29,10 +29,12 @@ def bucket(rr: float | None) -> str:
 rows = []
 for p in sorted(SRC.glob('*.json')):
     d = json.loads(p.read_text())
-    for e in d.get('targetSelectionEpisodes', []):
-        e = dict(e)
-        e['_file'] = p.name
-        rows.append(e)
+    symbol_results = d.get('results', [])
+    for result in symbol_results:
+        for e in result.get('targetSelectionEpisodes', []):
+            e = dict(e)
+            e['_file'] = p.name
+            rows.append(e)
 
 blocked = [e for e in rows if e.get('baselineBlocked')]
 
@@ -93,7 +95,6 @@ for field, out_key in [('setupModel', 'bySetupModel'), ('zoneSource', 'byZoneSou
             'touchesGe3': sum(1 for e in group if first_rescue(e, 3)),
         }
 
-# Keep compact examples for inspection, not all rows.
 examples = []
 for e in blocked:
     naive = first_rescue(e, None)
