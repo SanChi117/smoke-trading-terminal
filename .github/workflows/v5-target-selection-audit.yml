@@ -1,0 +1,68 @@
+name: v5-target-selection-audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-target-selection-audit.yml'
+      - 'scripts/apply-target-selection-audit.py'
+      - 'scripts/aggregate-target-selection-audit.py'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - { key: target-a, end: '2025-11-30T23:55:00.000Z' }
+          - { key: target-b, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Instrument target-selection audit inside runner
+        run: python scripts/apply-target-selection-audit.py
+      - name: Run fixed 180-day target-selection audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '180'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Save raw target-selection audit
+        run: cp runtime/level-flow-logic-audit/logic-audit.json target-${{ matrix.key }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-${{ matrix.key }}
+          path: target-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: target-target-*
+          path: target-selection-results
+          merge-multiple: true
+      - name: Aggregate target-selection diagnostics
+        run: python scripts/aggregate-target-selection-audit.py target-selection-results target-selection-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: target-selection-summary
+          path: target-selection-summary.json
+          if-no-files-found: error
