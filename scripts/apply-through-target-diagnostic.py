@@ -24,13 +24,13 @@ def main() -> None:
     new = '''  const candidates = synchronizedTargets(base.zones, base.activeZone, base.side, base.entry);\n  const firstBarrier = candidates[0] ?? null;\n  let selectedRank = 1;\n  let targetZone: PriceZone | null = candidates[0] ?? null;\n  let target: number | null = null;\n  let rr: number | null = null;\n  const blockers = withoutTargetBlockers(base.blockers);\n  const risk = Math.abs(base.entry - base.stop);\n\n  for (let index = 0; index < candidates.length; index += 1) {\n    selectedRank = index + 1;'''
     a = replace_exact(a, old, new)
     old2 = '''  return {\n    ...base,\n    targetZone,'''
-    new2 = '''  const selectorMeta = firstBarrier && targetZone && selectedRank > 1\n    ? `TARGET_SELECTOR|rank=${selectedRank}|firstId=${firstBarrier.id}|firstTf=${firstBarrier.timeframe}|firstSource=${firstBarrier.source}|firstTouches=${firstBarrier.touches}|firstLow=${firstBarrier.low}|firstHigh=${firstBarrier.high}`\n    : base.modelDetail;\n\n  return {\n    ...base,\n    modelDetail: selectorMeta,\n    targetZone,'''
+    new2 = '''  const selectorMeta = firstBarrier && targetZone && selectedRank > 1\n    ? `TARGET_SELECTOR|rank=${selectedRank}|firstId=${firstBarrier.id}|firstTf=${firstBarrier.timeframe}|firstSource=${firstBarrier.source}|firstTouches=${firstBarrier.touches}|firstLow=${firstBarrier.low}|firstHigh=${firstBarrier.high}`\n    : null;\n\n  return {\n    ...base,\n    selectorMeta,\n    targetZone,'''
     a = replace_exact(a, old2, new2)
     ANALYSIS.write_text(a)
 
     b = BACKTEST.read_text()
     old3 = '''      confidence: analysis.confidence,\n    });'''
-    new3 = '''      confidence: analysis.confidence,\n      selectorMeta: analysis.modelDetail ?? null,\n      maxMfeR,\n    } as any);'''
+    new3 = '''      confidence: analysis.confidence,\n      selectorMeta: (analysis as any).selectorMeta ?? null,\n      maxMfeR,\n    } as any);'''
     b = replace_exact(b, old3, new3)
     BACKTEST.write_text(b)
 
