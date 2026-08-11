@@ -1,0 +1,87 @@
+name: v5-structure-retest-secondary-feature
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-structure-retest-secondary-feature.yml'
+      - 'scripts/apply-structure-retest-secondary-diagnostic.py'
+      - 'scripts/aggregate-structure-retest-secondary-feature.mjs'
+      - 'scripts/apply-structure-retest-target-selector.py'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - { key: calibration-a-C, profile: C, end: '2025-05-31T23:55:00.000Z' }
+          - { key: calibration-a-R, profile: R, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a-C, profile: C, end: '2025-07-31T23:55:00.000Z' }
+          - { key: validation-a-R, profile: R, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a-C, profile: C, end: '2025-09-30T23:55:00.000Z' }
+          - { key: test-a-R, profile: R, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b-C, profile: C, end: '2025-11-30T23:55:00.000Z' }
+          - { key: calibration-b-R, profile: R, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b-C, profile: C, end: '2026-03-31T23:55:00.000Z' }
+          - { key: validation-b-R, profile: R, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b-C, profile: C, end: '2026-07-31T23:55:00.000Z' }
+          - { key: test-b-R, profile: R, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Apply R selector plus research telemetry
+        if: matrix.profile == 'R'
+        run: python scripts/apply-structure-retest-secondary-diagnostic.py
+      - name: Run fixed 60-day exact audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Annotate raw audit
+        env:
+          KEY: '${{ matrix.key }}'
+          PROFILE: '${{ matrix.profile }}'
+          END_ISO: '${{ matrix.end }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(p.read_text())
+          d['researchConfig']={'key':os.environ['KEY'],'profile':os.environ['PROFILE'],'endIso':os.environ['END_ISO']}
+          Path(f"secondary-{os.environ['KEY']}.json").write_text(json.dumps(d,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: secondary-${{ matrix.key }}
+          path: secondary-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: secondary-*
+          path: secondary-feature-results
+          merge-multiple: true
+      - name: Aggregate direct R extras and fixed feature grid
+        run: node scripts/aggregate-structure-retest-secondary-feature.mjs secondary-feature-results structure-retest-secondary-feature-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: structure-retest-secondary-feature-summary
+          path: structure-retest-secondary-feature-summary.json
+          if-no-files-found: error
