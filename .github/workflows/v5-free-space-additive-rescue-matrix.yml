@@ -1,0 +1,91 @@
+name: v5-free-space-additive-rescue-matrix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-free-space-additive-rescue-matrix.yml'
+      - 'scripts/apply-free-space-additive-rescue.py'
+      - 'scripts/aggregate-free-space-additive-rescue.mjs'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        window:
+          - { key: calibration-a, role: calibration, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a, role: validation, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a, role: test, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b, role: calibration, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b, role: validation, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b, role: test, end: '2026-07-31T23:55:00.000Z' }
+        profile:
+          - { key: C, minAtr: '0', maxObstacles: '' }
+          - { key: R15, minAtr: '1.5', maxObstacles: '' }
+          - { key: R20, minAtr: '2.0', maxObstacles: '' }
+          - { key: R25, minAtr: '2.5', maxObstacles: '' }
+          - { key: R20D1, minAtr: '2.0', maxObstacles: '1' }
+          - { key: R20D2, minAtr: '2.0', maxObstacles: '2' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Apply additive rescue research patch
+        if: matrix.profile.key != 'C'
+        run: python scripts/apply-free-space-additive-rescue.py
+      - name: Run fixed 60-day exact audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.window.end }}'
+          V5_RESCUE_FREE_SPACE_MIN_ATR: '${{ matrix.profile.minAtr }}'
+          V5_RESCUE_MAX_OBSTACLES_3ATR: '${{ matrix.profile.maxObstacles }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Annotate raw audit
+        env:
+          WINDOW_KEY: '${{ matrix.window.key }}'
+          PROFILE: '${{ matrix.profile.key }}'
+          ROLE: '${{ matrix.window.role }}'
+          END_ISO: '${{ matrix.window.end }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(p.read_text())
+          key=f"{os.environ['WINDOW_KEY']}-{os.environ['PROFILE']}"
+          d['researchConfig']={'key':key,'profile':os.environ['PROFILE'],'role':os.environ['ROLE'],'endIso':os.environ['END_ISO']}
+          Path(f"free-space-rescue-{key}.json").write_text(json.dumps(d,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: free-space-rescue-${{ matrix.window.key }}-${{ matrix.profile.key }}
+          path: free-space-rescue-${{ matrix.window.key }}-${{ matrix.profile.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: free-space-rescue-*
+          path: free-space-rescue-results
+          merge-multiple: true
+      - name: Aggregate additive rescue matrix
+        run: node scripts/aggregate-free-space-additive-rescue.mjs free-space-rescue-results free-space-additive-rescue-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: free-space-additive-rescue-summary
+          path: free-space-additive-rescue-summary.json
+          if-no-files-found: error
