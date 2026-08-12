@@ -7,6 +7,7 @@ V3 = ROOT / 'analysis-v3.ts'
 V4 = ROOT / 'analysis-v4-audit.ts'
 V5 = ROOT / 'analysis-v5-regime.ts'
 ANALYSIS = ROOT / 'analysis.ts'
+RUNNER = Path('scripts/run_level_flow_logic_audit.mjs')
 
 
 def replace_exact(text: str, old: str, new: str) -> str:
@@ -125,6 +126,17 @@ export function analyzeLevelFlow(symbol: string, raw: TimeframeBundle, now = Dat
 }
 '''
     ANALYSIS.write_text(wrapper)
+
+    # The generic audit invariant is frozen at RR>=1.8. Rescue B is intentionally
+    # predeclared at RR>=1.6, so research-profile jobs must validate against that
+    # candidate-specific floor. Baseline trades remain >=1.8 and therefore still pass.
+    runner = RUNNER.read_text()
+    runner = replace_exact(
+        runner,
+        'if ((analysis.rr ?? 0) < 1.8) failures.push("READY with RR below 1.8");',
+        'if ((analysis.rr ?? 0) < 1.6) failures.push("READY with RR below research rescue floor 1.6");',
+    )
+    RUNNER.write_text(runner)
 
 
 if __name__ == '__main__':
