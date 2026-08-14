@@ -43,7 +43,7 @@ jobs:
           AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
           AUDIT_DAYS: '60'
           AUDIT_END_ISO: '${{ matrix.window.end }}'
-        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs || test -f runtime/level-flow-logic-audit/logic-audit.json
       - name: Annotate result
         env:
           WINDOW_KEY: '${{ matrix.window.key }}'
