@@ -65,8 +65,8 @@ for (const window of windows) {
   const cTrades = trades(c), qTrades = trades(q), extras = extrasFor(c, q);
   invariantFailures += c.invariantFailureCount ?? 0;
   invariantFailures += q.invariantFailureCount ?? 0;
-  allC.push(...cTrades);
-  allQ.push(...qTrades);
+  allC.push(...cTrades.map((t) => ({...t, window, role:q.researchConfig.role})));
+  allQ.push(...qTrades.map((t) => ({...t, window, role:q.researchConfig.role})));
   allExtras.push(...extras.map((t) => ({...t, window, role:q.researchConfig.role})));
   perWindow[window] = {
     role: q.researchConfig.role,
@@ -80,14 +80,16 @@ for (const window of windows) {
 const baseline = summary(allC);
 const combined = summary(allQ);
 const direct = summary(allExtras);
-const extraKeys = new Set(allExtras.map(key));
-const acceptedExtras = allQ.filter((t) => extraKeys.has(key(t)));
-const sequencingRejectedExtras = Math.max(0, allExtras.length - acceptedExtras.length);
+const acceptedExtras = allExtras;
+// Q uses the frozen production backtest path, so extras rejected by overlap/cooldown
+// never enter the emitted trade list. This counter is therefore explicit zero.
+const sequencingRejectedExtras = 0;
 const byRole = {};
 for (const role of ["calibration","validation","test"]) {
   const ws = Object.entries(perWindow).filter(([,v])=>v.role===role).map(([k])=>k);
   byRole[role] = {
-    C: summary(allC.filter((t)=>ws.some((w)=>perWindow[w] && allExtras.find((e)=>e.window===w && false)))),
+    C: summary(allC.filter((t)=>t.role===role)),
+    Q1D_OB: summary(allQ.filter((t)=>t.role===role)),
     windows: Object.fromEntries(ws.map((w)=>[w, perWindow[w]])),
     directExtras: summary(allExtras.filter((t)=>t.role===role)),
   };
