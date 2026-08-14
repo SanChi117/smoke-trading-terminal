@@ -6,19 +6,20 @@ Research/PAPER only. No production/runtime change.
 
 Candidate key: `SR4H_SWING_NEXT5M_OPEN`
 
-A signal is eligible only when all of the following are true:
+A signal is eligible only when all of the following are true using information available no later than the closed 5m reaction candle and the immediately following 5m open:
 
 - frozen V5 HTF context and FROM-zone selection are unchanged;
 - 5m reaction type is exactly `sweep_reclaim`;
 - FROM timeframe is exactly `4h`;
 - FROM source is exactly `swing`;
-- production 15m-confirmation geometry is RR-blocked below 1.8R;
-- counterfactual entry is the immediately following 5m candle open after the closed sweep-reclaim reaction candle;
+- entry is the immediately following 5m candle open after the closed sweep-reclaim reaction candle;
 - structural stop is not narrowed;
 - synchronized HTF target is not pushed farther;
 - RR floor remains 1.8R;
 - V5 regime/model logic remains frozen;
 - the route is additive research only and must not remove or replace any frozen baseline READY trade.
+
+The later production 15m-confirmation result, including whether it would be RR-blocked below 1.8R, is diagnostic-only metadata. It is not an eligibility condition because it is not known at the next-5m-open decision time.
 
 No reaction-score threshold is part of the candidate. The prior diagnostic showed that `score >= 75` did not improve the rescue rate and therefore is not included.
 
@@ -28,7 +29,7 @@ Source: raw `entryTimingEpisodes` artifacts from PR #44 (`entry-timing-timing-a`
 
 The PR #44 overall result was structure-dominant: only about 1.97% of all RR-blocked episodes were rescued to RR >= 1.8 by moving from the production 15m confirmation close to the next 5m open. `sweep_reclaim` was the localized exception.
 
-For the frozen `sweep_reclaim + 4H + swing` subset:
+For the discovery subset `sweep_reclaim + 4H + swing` among later RR-blocked episodes:
 
 - RR-blocked episodes: 328
 - next-5m-open RR >= 1.8: 59
@@ -72,7 +73,8 @@ The following post-hoc changes are forbidden before an untouched validation resu
 - changing target selection;
 - lowering the 1.8R floor;
 - changing V5 regime gates;
-- filtering symbols based on these 59 historical rescues.
+- filtering symbols based on these 59 historical rescues;
+- using any future 15m confirmation outcome as an eligibility condition for the next-5m-open route.
 
 ## Required next validation
 
