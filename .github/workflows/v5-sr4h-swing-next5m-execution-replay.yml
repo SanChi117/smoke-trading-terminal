@@ -1,0 +1,86 @@
+name: v5-sr4h-swing-next5m-execution-replay
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-sr4h-swing-next5m-execution-replay.yml'
+      - 'scripts/apply-sr4h-swing-next5m-replay.py'
+      - 'scripts/aggregate-sr4h-swing-next5m-replay.mjs'
+      - 'docs/research/v5-sweep-reclaim-frozen-candidate.md'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        window:
+          - { key: calibration-a, role: calibration, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a, role: validation, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a, role: test, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b, role: calibration, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b, role: validation, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b, role: test, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Apply PAPER-only causal SR4H replay instrumentation
+        run: python scripts/apply-sr4h-swing-next5m-replay.py
+      - name: Run fixed 60-day historical replay on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.window.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Annotate replay result
+        env:
+          WINDOW_KEY: '${{ matrix.window.key }}'
+          ROLE: '${{ matrix.window.role }}'
+          END_ISO: '${{ matrix.window.end }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(p.read_text())
+          d['researchConfig']={'window':os.environ['WINDOW_KEY'],'role':os.environ['ROLE'],'endIso':os.environ['END_ISO']}
+          out=f"sr4h-replay-{os.environ['WINDOW_KEY']}.json"
+          Path(out).write_text(json.dumps(d,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sr4h-replay-${{ matrix.window.key }}
+          path: sr4h-replay-${{ matrix.window.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sr4h-replay-*
+          path: sr4h-replay-results
+          merge-multiple: true
+      - name: Aggregate C vs frozen SR4H candidate
+        run: node scripts/aggregate-sr4h-swing-next5m-replay.mjs sr4h-replay-results sr4h-replay-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sr4h-replay-summary
+          path: sr4h-replay-summary.json
+          if-no-files-found: error
