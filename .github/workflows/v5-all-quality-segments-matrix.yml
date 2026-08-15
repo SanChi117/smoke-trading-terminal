@@ -1,0 +1,76 @@
+name: v5-all-quality-segments-matrix
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-all-quality-segments-matrix.yml'
+      - 'scripts/apply-all-quality-segments.py'
+      - 'scripts/aggregate-all-quality-segments.mjs'
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        window:
+          - { key: calibration-a, role: calibration, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a, role: validation, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a, role: test, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b, role: calibration, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b, role: validation, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b, role: test, end: '2026-07-31T23:55:00.000Z' }
+        profile: [C, Q1D_OB, QFVG_FS15, Q1D_FVG]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.16.0', cache: npm }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: npm ci
+      - run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Apply PAPER quality profile
+        if: matrix.profile != 'C'
+        env: { V5_QUALITY_PROFILE: '${{ matrix.profile }}' }
+        run: python scripts/apply-all-quality-segments.py
+      - name: Run fixed 60-day replay
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.window.end }}'
+          V5_QUALITY_PROFILE: '${{ matrix.profile }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs || test -f runtime/level-flow-logic-audit/logic-audit.json
+      - name: Annotate
+        env:
+          WINDOW: '${{ matrix.window.key }}'
+          ROLE: '${{ matrix.window.role }}'
+          PROFILE: '${{ matrix.profile }}'
+          END_ISO: '${{ matrix.window.end }}'
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          d=json.loads(Path('runtime/level-flow-logic-audit/logic-audit.json').read_text())
+          d['researchConfig']={'window':os.environ['WINDOW'],'role':os.environ['ROLE'],'profile':os.environ['PROFILE'],'endIso':os.environ['END_ISO']}
+          Path(f"quality-{os.environ['WINDOW']}-{os.environ['PROFILE']}.json").write_text(json.dumps(d,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quality-${{ matrix.window.key }}-${{ matrix.profile }}
+          path: quality-${{ matrix.window.key }}-${{ matrix.profile }}.json
+          if-no-files-found: error
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.16.0' }
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'quality-*', path: quality-results, merge-multiple: true }
+      - run: node scripts/aggregate-all-quality-segments.mjs quality-results all-quality-segments-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: all-quality-segments-summary
+          path: all-quality-segments-summary.json
+          if-no-files-found: error
