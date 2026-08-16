@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT=Path("app/lib/level")
 V3=ROOT/"analysis-v3.ts"; V4=ROOT/"analysis-v4-audit.ts"; V5=ROOT/"analysis-v5-regime.ts"
-ANALYSIS=ROOT/"analysis.ts"; RUNNER=Path("scripts/run_level_flow_logic_audit.mjs")
+ANALYSIS=ROOT/"analysis.ts"; BACKTEST=ROOT/"backtest.ts"; RUNNER=Path("scripts/run_level_flow_logic_audit.mjs")
 
 def replace_exact(text, old, new):
     count=text.count(old)
@@ -85,5 +85,10 @@ export function analyzeLevelFlow(symbol: string, raw: TimeframeBundle, now=Date.
     || (profile === "QFVG_FS15" && analysis.activeZone?.source === "fvg");
   if ((analysis.rr ?? 0) < 1.8 && !researchQuality) failures.push("READY with RR below 1.8 outside selected quality segment");''')
     RUNNER.write_text(runner)
+
+    # The first matrix must observe every factual RR bin; 1.6 is not an eligibility filter.
+    backtest=BACKTEST.read_text()
+    backtest=replace_exact(backtest, "    if (actualRR < 1.6) continue;\n", "    if (actualRR <= 0) continue;\n")
+    BACKTEST.write_text(backtest)
 
 if __name__=="__main__": main()
