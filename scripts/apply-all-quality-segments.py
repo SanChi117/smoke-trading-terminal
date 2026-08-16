@@ -70,9 +70,11 @@ export function analyzeLevelFlow(symbol: string, raw: TimeframeBundle, now=Date.
   const baseline=analyzeBaseline(symbol,raw,now);
   if (baseline.state==="ready") return baseline;
   const candidate=analyzeCandidate(symbol,raw,now);
+  const directionalTarget = candidate.entry!==null && candidate.target!==null && candidate.side!==null
+    && (candidate.side==="long" ? candidate.target>candidate.entry : candidate.target<candidate.entry);
   if (candidate.state==="ready" && candidate.entry!==null && candidate.stop!==null && candidate.target!==null
     && candidate.targetZone!==null && candidate.reaction.confirmed && candidate.setupModel!=="blocked"
-    && eligible(symbol,raw,candidate)) return candidate;
+    && directionalTarget && eligible(symbol,raw,candidate)) return candidate;
   return baseline;
 }
 '''
