@@ -15,6 +15,7 @@ export type LevelBacktestTrade = {
   zoneTimeframe: Timeframe;
   zoneSource: ZoneSource;
   setupModel: SetupModel | null;
+  qualitySegment: "QFVG_FS15" | null;
   zoneScore: number;
   zoneTouches: number;
   weeklyBias: Bias;
@@ -154,7 +155,7 @@ export function runLevelBacktest(
     const risk = Math.abs(entry - stop);
     if (risk <= 0) continue;
     const actualRR = Math.abs(target - entry) / risk;
-    if (actualRR < 1.6) continue;
+    if (actualRR <= 0) continue;
 
     const finalIndex = Math.min(candles15.length - 1, index + 1 + maxHoldBars);
     let exit = candles15[finalIndex].close;
@@ -236,6 +237,7 @@ export function runLevelBacktest(
       zoneTimeframe: analysis.activeZone.timeframe,
       zoneSource: analysis.activeZone.source,
       setupModel: analysis.setupModel ?? null,
+      qualitySegment: analysis.qualitySegment ?? null,
       zoneScore: analysis.activeZone.score,
       zoneTouches: analysis.activeZone.touches,
       weeklyBias: analysis.weeklyBias,
