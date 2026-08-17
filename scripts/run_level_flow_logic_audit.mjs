@@ -265,6 +265,7 @@ function stageSnapshot(symbol, time, analysis) {
     symbol,
     time: iso(time),
     state: analysis.state,
+    qualitySegment: analysis.qualitySegment ?? null,
     side: analysis.side,
     bias: analysis.bias,
     weeklyBias: analysis.weeklyBias,
@@ -317,7 +318,12 @@ function validateInvariant(analysis) {
     failures.push("READY without complete Entry/SL/TP");
     return failures;
   }
-  if ((analysis.rr ?? 0) < 1.8) failures.push("READY with RR below 1.8");
+  const validQfvgSubFloor = analysis.qualitySegment === "QFVG_FS15"
+    && analysis.activeZone?.source === "fvg"
+    && (analysis.rr ?? 0) > 0;
+  if ((analysis.rr ?? 0) < 1.8 && !validQfvgSubFloor) {
+    failures.push("READY with RR below 1.8 outside QFVG_FS15");
+  }
   if (analysis.side === "long") {
     if (analysis.stop >= analysis.activeZone.low) failures.push("LONG stop is not behind source zone");
     if (analysis.target <= analysis.entry) failures.push("LONG target is not above entry");
@@ -437,6 +443,7 @@ function auditSymbol(symbol, bundle) {
           zone: `${trade.zoneTimeframe} ${trade.zoneSource} ${trade.zoneLabel}`,
           zoneSource: trade.zoneSource,
           setupModel: trade.setupModel,
+          qualitySegment: trade.qualitySegment,
           weeklyBias: trade.weeklyBias,
           dailyBias: trade.dailyBias,
           phase4hBias: trade.phase4hBias,

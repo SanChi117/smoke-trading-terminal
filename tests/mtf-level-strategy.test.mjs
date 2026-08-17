@@ -114,7 +114,11 @@ function assertReadyPlanInvariant(analysis) {
   assert.notEqual(analysis.reaction.type, "none");
   assert.ok(analysis.reaction.confirmed);
   assert.ok(analysis.entry !== null && analysis.stop !== null && analysis.target !== null);
-  assert.ok((analysis.rr ?? 0) >= 1.8);
+  if ((analysis.rr ?? 0) < 1.8) {
+    assert.equal(analysis.qualitySegment, "QFVG_FS15");
+    assert.equal(analysis.activeZone.source, "fvg");
+    assert.ok((analysis.rr ?? 0) > 0);
+  }
   assert.ok(analysis.trace.every((step) => step.state === "pass"));
   if (analysis.side === "long") {
     assert.ok(analysis.stop < analysis.activeZone.low);
@@ -198,6 +202,10 @@ test("backtest only enters after a complete 1D/4H level-flow plan", () => {
   assert.equal(result.version, "SMOKE_LEVEL_FLOW_V3_AUDIT");
   assert.ok(result.trades.every((trade) => ["1d", "4h"].includes(trade.zoneTimeframe)));
   assert.ok(result.trades.every((trade) => trade.reactionType !== "none"));
-  assert.ok(result.trades.every((trade) => trade.plannedRR >= 1.6));
+  assert.ok(result.trades.every((trade) => trade.plannedRR > 0));
+  assert.ok(result.trades.every((trade) => (
+    trade.plannedRR >= 1.6
+    || (trade.qualitySegment === "QFVG_FS15" && trade.zoneSource === "fvg")
+  )));
   assert.ok(Number.isFinite(result.metrics.netR));
 });

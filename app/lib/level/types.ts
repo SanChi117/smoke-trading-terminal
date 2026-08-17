@@ -5,6 +5,7 @@ export type ZoneSource = "order_block" | "swing" | "fvg" | "range_level";
 export type StructureTag = "BOS" | "CHoCH";
 export type Timeframe = "1w" | "1d" | "4h" | "15m" | "5m";
 export type SetupModel = "location" | "reversal" | "continuation" | "blocked";
+export type QualitySegment = "QFVG_FS15";
 
 export type Candle = {
   time: number;
@@ -106,6 +107,7 @@ export type MtfLevelAnalysis = {
   confidence: number;
   setupModel?: SetupModel | null;
   modelDetail?: string | null;
+  qualitySegment?: QualitySegment | null;
   activeZone: PriceZone | null;
   targetZone: PriceZone | null;
   zones: PriceZone[];

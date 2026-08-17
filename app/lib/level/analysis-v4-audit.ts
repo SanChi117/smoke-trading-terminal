@@ -40,10 +40,11 @@ function withoutTargetBlockers(blockers: string[]): string[] {
   ));
 }
 
-export function analyzeLevelFlow(
+function analyzeLevelFlowWithPolicy(
   symbol: string,
   raw: TimeframeBundle,
-  now = Date.now(),
+  now: number,
+  allowSubFloorFvg: boolean,
 ): MtfLevelAnalysis {
   const base = analyzeV3(symbol, raw, now);
   if (!base.activeZone || !base.side || base.entry === null || base.stop === null) return base;
@@ -61,7 +62,10 @@ export function analyzeLevelFlow(
       : targetZone.high + atr15 * 0.15;
     const risk = Math.abs(base.entry - base.stop);
     rr = Math.abs(target - base.entry) / Math.max(risk, 1e-9);
-    if (rr < 1.8) blockers.push(`До синхронизированной ${targetZone.timeframe.toUpperCase()} цели только ${rr.toFixed(2)}R`);
+    const qfvgFs15RrBypass = allowSubFloorFvg && base.activeZone.source === "fvg";
+    if (rr < 1.8 && !qfvgFs15RrBypass) {
+      blockers.push(`До синхронизированной ${targetZone.timeframe.toUpperCase()} цели только ${rr.toFixed(2)}R`);
+    }
   } else {
     blockers.push(
       base.activeZone.timeframe === "4h"
@@ -104,4 +108,20 @@ export function analyzeLevelFlow(
     reason,
     trace,
   };
+}
+
+export function analyzeLevelFlow(
+  symbol: string,
+  raw: TimeframeBundle,
+  now = Date.now(),
+): MtfLevelAnalysis {
+  return analyzeLevelFlowWithPolicy(symbol, raw, now, false);
+}
+
+export function analyzeLevelFlowWithQfvgRr(
+  symbol: string,
+  raw: TimeframeBundle,
+  now = Date.now(),
+): MtfLevelAnalysis {
+  return analyzeLevelFlowWithPolicy(symbol, raw, now, true);
 }

@@ -10,7 +10,10 @@ import type {
 } from "./types.ts";
 import { closedCandles } from "./math.ts";
 import { structureBias } from "./structure.ts";
-import { analyzeLevelFlow as analyzeV4 } from "./analysis-v4-audit.ts";
+import {
+  analyzeLevelFlow as analyzeV4,
+  analyzeLevelFlowWithQfvgRr as analyzeV4WithQfvgRr,
+} from "./analysis-v4-audit.ts";
 
 type RangePosition = "premium" | "discount" | "equilibrium";
 
@@ -128,12 +131,11 @@ function blockResult(base: MtfLevelAnalysis, blocker: string): MtfLevelAnalysis 
  * V4 builds the full MTF chain. V5 separates a location reversal from a
  * trend continuation so the two setup families cannot accidentally mix.
  */
-export function analyzeLevelFlow(
-  symbol: string,
+function applyRegimeGate(
+  base: MtfLevelAnalysis,
   raw: TimeframeBundle,
-  now = Date.now(),
+  now: number,
 ): MtfLevelAnalysis {
-  const base = analyzeV4(symbol, raw, now);
   if (
     base.state !== "ready"
     || !base.side
@@ -162,4 +164,20 @@ export function analyzeLevelFlow(
     return blockResult(base, decision.blocker);
   }
   return decorateAllowedResult(base, decision.model);
+}
+
+export function analyzeLevelFlow(
+  symbol: string,
+  raw: TimeframeBundle,
+  now = Date.now(),
+): MtfLevelAnalysis {
+  return applyRegimeGate(analyzeV4(symbol, raw, now), raw, now);
+}
+
+export function analyzeLevelFlowWithQfvgRr(
+  symbol: string,
+  raw: TimeframeBundle,
+  now = Date.now(),
+): MtfLevelAnalysis {
+  return applyRegimeGate(analyzeV4WithQfvgRr(symbol, raw, now), raw, now);
 }
