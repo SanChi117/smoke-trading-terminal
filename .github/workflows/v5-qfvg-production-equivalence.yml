@@ -1,0 +1,68 @@
+name: v5-qfvg-production-equivalence
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-qfvg-production-equivalence.yml'
+      - 'scripts/aggregate-qfvg-production-equivalence.mjs'
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        window:
+          - { key: oos-2024-12-31, end: '2024-12-31T23:55:00.000Z' }
+          - { key: oos-2025-03-31, end: '2025-03-31T23:55:00.000Z' }
+          - { key: oos-2026-01-31, end: '2026-01-31T23:55:00.000Z' }
+        profile: [C, QFVG_FS15]
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.16.0', cache: npm }
+      - run: npm ci
+      - run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Restore frozen main analyzer for baseline cell
+        if: matrix.profile == 'C'
+        run: git checkout 56ae74d6fb6dcefc07a2c3fe14664a9a4c21f182 -- app/lib/level
+      - name: Run fixed 60-day equivalence replay
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.window.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs || test -f runtime/level-flow-logic-audit/logic-audit.json
+      - name: Annotate
+        env:
+          WINDOW: '${{ matrix.window.key }}'
+          PROFILE: '${{ matrix.profile }}'
+          END_ISO: '${{ matrix.window.end }}'
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          d=json.loads(Path('runtime/level-flow-logic-audit/logic-audit.json').read_text())
+          d['researchConfig']={'window':os.environ['WINDOW'],'role':'production-equivalence','profile':os.environ['PROFILE'],'endIso':os.environ['END_ISO'],'days':60,'untouchedOos':True}
+          Path(f"qfvg-equivalence-{os.environ['WINDOW']}-{os.environ['PROFILE']}.json").write_text(json.dumps(d,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qfvg-equivalence-${{ matrix.window.key }}-${{ matrix.profile }}
+          path: qfvg-equivalence-${{ matrix.window.key }}-${{ matrix.profile }}.json
+          if-no-files-found: error
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.16.0' }
+      - uses: actions/download-artifact@v4
+        with: { pattern: 'qfvg-equivalence-*', path: qfvg-equivalence-results, merge-multiple: true }
+      - run: node scripts/aggregate-qfvg-production-equivalence.mjs qfvg-equivalence-results qfvg-fs15-production-equivalence-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qfvg-fs15-production-equivalence-summary
+          path: qfvg-fs15-production-equivalence-summary.json
+          if-no-files-found: error
