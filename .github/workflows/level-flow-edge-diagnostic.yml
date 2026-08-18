@@ -1,0 +1,118 @@
+name: level-flow-edge-diagnostic
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/level-flow-edge-diagnostic.yml'
+      - 'scripts/run_level_flow_edge_diagnostic.mjs'
+      - 'scripts/aggregate_level_flow_edge_diagnostic.mjs'
+      - 'docs/LEVEL_FLOW_EDGE_DIAGNOSTIC_R1.md'
+  workflow_dispatch:
+
+concurrency:
+  group: level-flow-edge-diagnostic-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci
+      - name: Verify frozen ORIGINAL_LEVEL_FLOW_V3 source
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD:app/lib/level/analysis-v3.ts)" = "8beca69f3d0b20e2a89e05ccbf16a9d14d593210"
+          test "$(git rev-parse HEAD:app/lib/level/math.ts)" = "125f8551a0fa27b093dd9e6ab94a146cd1607319"
+          test "$(git rev-parse HEAD:app/lib/level/structure.ts)" = "7f8a18913d0674ab873964c43c18f32236fcf31a"
+          test "$(git rev-parse HEAD:app/lib/level/zones.ts)" = "f5ca1bd6a7757b8574d3cbd833abb9b0b077405d"
+      - name: Syntax and import checks
+        run: |
+          node --check scripts/run_level_flow_edge_diagnostic.mjs
+          node --check scripts/aggregate_level_flow_edge_diagnostic.mjs
+          node --experimental-strip-types -e "import('./app/lib/level/analysis-v3.ts').then(() => console.log('ORIGINAL_LEVEL_FLOW_V3 import OK'))"
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        symbol:
+          - BTCUSDT
+          - ETHUSDT
+          - SOLUSDT
+          - BNBUSDT
+          - XRPUSDT
+          - ADAUSDT
+          - AVAXUSDT
+          - SUIUSDT
+          - APTUSDT
+          - NEARUSDT
+          - LINKUSDT
+          - AAVEUSDT
+          - ARBUSDT
+          - OPUSDT
+          - DOGEUSDT
+          - TAOUSDT
+          - ONDOUSDT
+          - INJUSDT
+          - SEIUSDT
+          - TONUSDT
+          - PEPEUSDT
+          - FETUSDT
+          - WIFUSDT
+          - DOTUSDT
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - run: npm ci
+      - name: Run frozen 540-day diagnostic
+        env:
+          DIAG_SYMBOL: '${{ matrix.symbol }}'
+          DIAG_DAYS: '540'
+          DIAG_END_ISO: '2026-07-31T23:55:00.000Z'
+        run: node --experimental-strip-types scripts/run_level_flow_edge_diagnostic.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: edge-diagnostic-${{ matrix.symbol }}
+          path: runtime/level-flow-edge-diagnostic/${{ matrix.symbol }}.*
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs: symbol
+    if: always() && needs.symbol.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: edge-diagnostic-*
+          path: diagnostic-results
+          merge-multiple: true
+      - name: Aggregate without retuning
+        run: node scripts/aggregate_level_flow_edge_diagnostic.mjs diagnostic-results level-flow-edge-diagnostic-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: level-flow-edge-diagnostic-summary
+          path: |
+            level-flow-edge-diagnostic-summary.json
+            level-flow-edge-diagnostic-summary.md
+          if-no-files-found: error
+          retention-days: 90
