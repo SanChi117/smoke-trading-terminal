@@ -1,0 +1,89 @@
+name: v5-q1d-ob-additive-matrix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-q1d-ob-additive-matrix.yml'
+      - 'scripts/apply-q1d-ob-additive-bypass.py'
+      - 'scripts/aggregate-q1d-ob-additive-matrix.mjs'
+      - 'docs/research/q1d-ob-additive-matrix-spec.md'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        window:
+          - { key: calibration-a, role: calibration, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a, role: validation, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a, role: test, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b, role: calibration, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b, role: validation, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b, role: test, end: '2026-07-31T23:55:00.000Z' }
+        profile:
+          - { key: C }
+          - { key: Q1D_OB }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Apply PAPER-only Q1D_OB additive patch
+        if: matrix.profile.key == 'Q1D_OB'
+        run: python scripts/apply-q1d-ob-additive-bypass.py
+      - name: Run fixed 60-day audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.window.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Annotate matrix result
+        env:
+          WINDOW_KEY: '${{ matrix.window.key }}'
+          ROLE: '${{ matrix.window.role }}'
+          PROFILE: '${{ matrix.profile.key }}'
+          END_ISO: '${{ matrix.window.end }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(p.read_text())
+          d['researchConfig']={'window':os.environ['WINDOW_KEY'],'role':os.environ['ROLE'],'profile':os.environ['PROFILE'],'endIso':os.environ['END_ISO']}
+          out=f"q1d-ob-{os.environ['WINDOW_KEY']}-{os.environ['PROFILE']}.json"
+          Path(out).write_text(json.dumps(d,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: q1d-ob-${{ matrix.window.key }}-${{ matrix.profile.key }}
+          path: q1d-ob-${{ matrix.window.key }}-${{ matrix.profile.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: q1d-ob-*
+          path: q1d-ob-results
+          merge-multiple: true
+      - name: Aggregate Q1D_OB additive matrix
+        run: node scripts/aggregate-q1d-ob-additive-matrix.mjs q1d-ob-results q1d-ob-additive-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: q1d-ob-additive-summary
+          path: q1d-ob-additive-summary.json
+          if-no-files-found: error
