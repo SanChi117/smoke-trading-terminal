@@ -1,0 +1,98 @@
+name: v5-prereaction-free-space-matrix
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-prereaction-free-space-matrix.yml'
+      - 'scripts/apply-prereaction-free-space-gate.py'
+      - 'scripts/aggregate-prereaction-free-space-matrix.mjs'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        window: [calibration-a, validation-a, test-a, calibration-b, validation-b, test-b]
+        profile: [C, F15, F20, F25, F20D1, F20D2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+
+      - name: Resolve fixed window and profile
+        shell: bash
+        run: |
+          case "${{ matrix.window }}" in
+            calibration-a) echo "AUDIT_END_ISO=2025-05-31T23:55:00.000Z" >> "$GITHUB_ENV"; echo "ROLE=calibration" >> "$GITHUB_ENV" ;;
+            validation-a)  echo "AUDIT_END_ISO=2025-07-31T23:55:00.000Z" >> "$GITHUB_ENV"; echo "ROLE=validation" >> "$GITHUB_ENV" ;;
+            test-a)        echo "AUDIT_END_ISO=2025-09-30T23:55:00.000Z" >> "$GITHUB_ENV"; echo "ROLE=test" >> "$GITHUB_ENV" ;;
+            calibration-b) echo "AUDIT_END_ISO=2025-11-30T23:55:00.000Z" >> "$GITHUB_ENV"; echo "ROLE=calibration" >> "$GITHUB_ENV" ;;
+            validation-b)  echo "AUDIT_END_ISO=2026-03-31T23:55:00.000Z" >> "$GITHUB_ENV"; echo "ROLE=validation" >> "$GITHUB_ENV" ;;
+            test-b)        echo "AUDIT_END_ISO=2026-07-31T23:55:00.000Z" >> "$GITHUB_ENV"; echo "ROLE=test" >> "$GITHUB_ENV" ;;
+          esac
+          case "${{ matrix.profile }}" in
+            C) ;;
+            F15) echo "V5_FREE_SPACE_MIN_ATR=1.5" >> "$GITHUB_ENV" ;;
+            F20) echo "V5_FREE_SPACE_MIN_ATR=2.0" >> "$GITHUB_ENV" ;;
+            F25) echo "V5_FREE_SPACE_MIN_ATR=2.5" >> "$GITHUB_ENV" ;;
+            F20D1) echo "V5_FREE_SPACE_MIN_ATR=2.0" >> "$GITHUB_ENV"; echo "V5_MAX_OBSTACLES_3ATR=1" >> "$GITHUB_ENV" ;;
+            F20D2) echo "V5_FREE_SPACE_MIN_ATR=2.0" >> "$GITHUB_ENV"; echo "V5_MAX_OBSTACLES_3ATR=2" >> "$GITHUB_ENV" ;;
+          esac
+
+      - name: Apply research-only free-space gate
+        if: matrix.profile != 'C'
+        run: python scripts/apply-prereaction-free-space-gate.py
+
+      - name: Run fixed 60-day exact audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+
+      - name: Annotate raw audit
+        env:
+          WINDOW: '${{ matrix.window }}'
+          PROFILE: '${{ matrix.profile }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(p.read_text())
+          d['researchConfig']={'window':os.environ['WINDOW'],'profile':os.environ['PROFILE'],'role':os.environ['ROLE'],'endIso':os.environ['AUDIT_END_ISO']}
+          out=Path(f"free-space-matrix-{os.environ['WINDOW']}-{os.environ['PROFILE']}.json")
+          out.write_text(json.dumps(d,separators=(',',':')))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: free-space-matrix-${{ matrix.window }}-${{ matrix.profile }}
+          path: free-space-matrix-${{ matrix.window }}-${{ matrix.profile }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: free-space-matrix-*
+          path: free-space-matrix-results
+          merge-multiple: true
+      - name: Aggregate free-space execution matrix
+        run: node scripts/aggregate-prereaction-free-space-matrix.mjs free-space-matrix-results prereaction-free-space-matrix-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prereaction-free-space-matrix-summary
+          path: prereaction-free-space-matrix-summary.json
+          if-no-files-found: error
