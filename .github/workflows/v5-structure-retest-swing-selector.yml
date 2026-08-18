@@ -1,0 +1,87 @@
+name: v5-structure-retest-swing-selector
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-structure-retest-swing-selector.yml'
+      - 'scripts/apply-structure-retest-swing-selector.py'
+      - 'scripts/aggregate-structure-retest-swing-selector.mjs'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - { key: calibration-a-C, profile: C, role: calibration, end: '2025-05-31T23:55:00.000Z' }
+          - { key: calibration-a-S, profile: S, role: calibration, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a-C, profile: C, role: validation, end: '2025-07-31T23:55:00.000Z' }
+          - { key: validation-a-S, profile: S, role: validation, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a-C, profile: C, role: test, end: '2025-09-30T23:55:00.000Z' }
+          - { key: test-a-S, profile: S, role: test, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b-C, profile: C, role: calibration, end: '2025-11-30T23:55:00.000Z' }
+          - { key: calibration-b-S, profile: S, role: calibration, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b-C, profile: C, role: validation, end: '2026-03-31T23:55:00.000Z' }
+          - { key: validation-b-S, profile: S, role: validation, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b-C, profile: C, role: test, end: '2026-07-31T23:55:00.000Z' }
+          - { key: test-b-S, profile: S, role: test, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Apply structure-retest swing selector inside runner
+        if: matrix.profile == 'S'
+        run: python scripts/apply-structure-retest-swing-selector.py
+      - name: Run fixed 60-day exact audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Annotate raw audit
+        env:
+          KEY: '${{ matrix.key }}'
+          PROFILE: '${{ matrix.profile }}'
+          ROLE: '${{ matrix.role }}'
+          END_ISO: '${{ matrix.end }}'
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('runtime/level-flow-logic-audit/logic-audit.json')
+          d=json.loads(p.read_text())
+          d['researchConfig']={'key':os.environ['KEY'],'profile':os.environ['PROFILE'],'role':os.environ['ROLE'],'endIso':os.environ['END_ISO']}
+          Path(f"structure-retest-swing-{os.environ['KEY']}.json").write_text(json.dumps(d,separators=(',',':')))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: structure-retest-swing-${{ matrix.key }}
+          path: structure-retest-swing-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: structure-retest-swing-*
+          path: structure-retest-swing-results
+          merge-multiple: true
+      - name: Aggregate structure-retest swing selector results
+        run: node scripts/aggregate-structure-retest-swing-selector.mjs structure-retest-swing-results structure-retest-swing-selector-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: structure-retest-swing-selector-summary
+          path: structure-retest-swing-selector-summary.json
+          if-no-files-found: error
