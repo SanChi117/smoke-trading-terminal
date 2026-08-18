@@ -48,6 +48,15 @@ Donchian exit lookback: **60 completed 4H candles** (approximately 10 days).
 
 There is no TP and no time stop.
 
+### Evaluation cutoff
+
+- New entries are allowed only through **2026-07-31 23:59 UTC**.
+- Market data for exits continue through **2026-08-17 23:59 UTC**.
+- Any position still open at the final available 4H candle is force-closed at that candle's close with adverse exit slippage and normal exit commission.
+- Such an exit is explicitly labeled `EVALUATION_CUTOFF`.
+
+This cutoff rule is frozen before aggregate results are visible and prevents open positions from disappearing from the sample.
+
 ## Execution costs
 
 Base scenario is fixed before results:
