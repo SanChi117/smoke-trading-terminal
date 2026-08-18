@@ -1,0 +1,68 @@
+name: v5-through-target-diagnostic
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-through-target-diagnostic.yml'
+      - 'scripts/apply-through-target-diagnostic.py'
+      - 'scripts/aggregate-through-target-diagnostic.mjs'
+      - 'scripts/apply-tested-target-selector.py'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include:
+          - { key: calibration-a, end: '2025-05-31T23:55:00.000Z' }
+          - { key: validation-a, end: '2025-07-31T23:55:00.000Z' }
+          - { key: test-a, end: '2025-09-30T23:55:00.000Z' }
+          - { key: calibration-b, end: '2025-11-30T23:55:00.000Z' }
+          - { key: validation-b, end: '2026-03-31T23:55:00.000Z' }
+          - { key: test-b, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Apply target selector and traversal instrumentation inside runner
+        run: python scripts/apply-through-target-diagnostic.py
+      - name: Run fixed 60-day exact audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '60'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Save diagnostic audit
+        run: cp runtime/level-flow-logic-audit/logic-audit.json through-${{ matrix.key }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: through-${{ matrix.key }}
+          path: through-${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: through-*
+          path: through-target-results
+          merge-multiple: true
+      - name: Aggregate first-barrier traversal
+        run: node scripts/aggregate-through-target-diagnostic.mjs through-target-results through-target-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: through-target-summary
+          path: through-target-summary.json
+          if-no-files-found: error
