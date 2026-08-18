@@ -1,0 +1,107 @@
+name: donchian-trend-following-r1
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/donchian-trend-following-r1.yml'
+      - 'scripts/run_donchian_trend_following_r1.mjs'
+      - 'scripts/aggregate_donchian_trend_following_r1.mjs'
+      - 'docs/DONCHIAN_TREND_FOLLOWING_R1.md'
+  workflow_dispatch:
+
+concurrency:
+  group: donchian-trend-following-r1-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Verify frozen protocol
+        run: test "$(git rev-parse HEAD:docs/DONCHIAN_TREND_FOLLOWING_R1.md)" = "a4146380d10d7757afa90709dff1828634e61b46"
+      - name: Syntax checks
+        run: |
+          node --check scripts/run_donchian_trend_following_r1.mjs
+          node --check scripts/aggregate_donchian_trend_following_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        symbol:
+          - BTCUSDT
+          - ETHUSDT
+          - BNBUSDT
+          - XRPUSDT
+          - ADAUSDT
+          - SOLUSDT
+          - DOGEUSDT
+          - LINKUSDT
+          - AVAXUSDT
+          - DOTUSDT
+          - LTCUSDT
+          - ATOMUSDT
+          - AAVEUSDT
+          - NEARUSDT
+          - INJUSDT
+          - OPUSDT
+          - ARBUSDT
+          - APTUSDT
+          - SUIUSDT
+          - SEIUSDT
+          - TAOUSDT
+          - ONDOUSDT
+          - TONUSDT
+          - FETUSDT
+          - WIFUSDT
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Run frozen complete PnL strategy
+        env:
+          DTF_SYMBOL: '${{ matrix.symbol }}'
+        run: node scripts/run_donchian_trend_following_r1.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: donchian-trend-following-${{ matrix.symbol }}
+          path: runtime/donchian-trend-following-r1/${{ matrix.symbol }}.*
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs: symbol
+    if: always() && needs.symbol.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: donchian-trend-following-*
+          path: donchian-trend-following-results
+          merge-multiple: true
+      - name: Aggregate frozen PnL gate
+        run: node scripts/aggregate_donchian_trend_following_r1.mjs donchian-trend-following-results donchian-trend-following-r1-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: donchian-trend-following-r1-summary
+          path: |
+            donchian-trend-following-r1-summary.json
+            donchian-trend-following-r1-summary.md
+          if-no-files-found: error
+          retention-days: 90
