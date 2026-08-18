@@ -1,0 +1,138 @@
+name: dynamic-liquidity-universe-replication-r1
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/DYNAMIC_LIQUIDITY_UNIVERSE_REPLICATION_R1.md'
+      - 'scripts/run_dynamic_liquidity_universe_replication_r1.mjs'
+      - 'scripts/aggregate_dynamic_liquidity_universe_replication_r1.mjs'
+      - '.github/workflows/dynamic-liquidity-universe-replication-r1.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dynamic-liquidity-universe-replication-r1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Freeze protocol blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git hash-object docs/DYNAMIC_LIQUIDITY_UNIVERSE_REPLICATION_R1.md)"
+          expected="aadc683734a253d08837f6c59384ae1426e78bf8"
+          test "$actual" = "$expected"
+      - name: Syntax check
+        run: |
+          node --check scripts/run_dynamic_liquidity_universe_replication_r1.mjs
+          node --check scripts/aggregate_dynamic_liquidity_universe_replication_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        symbol:
+          - BTCUSDT
+          - ETHUSDT
+          - BNBUSDT
+          - XRPUSDT
+          - ADAUSDT
+          - SOLUSDT
+          - DOGEUSDT
+          - LINKUSDT
+          - AVAXUSDT
+          - DOTUSDT
+          - LTCUSDT
+          - ATOMUSDT
+          - AAVEUSDT
+          - NEARUSDT
+          - INJUSDT
+          - OPUSDT
+          - ARBUSDT
+          - APTUSDT
+          - SUIUSDT
+          - SEIUSDT
+          - TAOUSDT
+          - ONDOUSDT
+          - TONUSDT
+          - FETUSDT
+          - WIFUSDT
+          - BCHUSDT
+          - TRXUSDT
+          - XLMUSDT
+          - ETCUSDT
+          - FILUSDT
+          - UNIUSDT
+          - ICPUSDT
+          - ALGOUSDT
+          - VETUSDT
+          - RUNEUSDT
+          - GALAUSDT
+          - SANDUSDT
+          - MANAUSDT
+          - CRVUSDT
+          - CHZUSDT
+          - LDOUSDT
+          - DYDXUSDT
+          - IMXUSDT
+          - STXUSDT
+          - COMPUSDT
+          - SNXUSDT
+          - ZECUSDT
+          - KAVAUSDT
+          - XTZUSDT
+          - ENJUSDT
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y unzip
+      - name: Run symbol
+        env:
+          DLU_SYMBOL: ${{ matrix.symbol }}
+          DLU_OUTPUT_DIR: artifacts/dynamic-liquidity
+        run: node scripts/run_dynamic_liquidity_universe_replication_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dynamic-liquidity-${{ matrix.symbol }}
+          path: artifacts/dynamic-liquidity/${{ matrix.symbol }}.json
+          retention-days: 14
+
+  aggregate:
+    needs: symbol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dynamic-liquidity-*
+          path: artifacts/dynamic-liquidity
+          merge-multiple: true
+      - name: Aggregate
+        run: |
+          node scripts/aggregate_dynamic_liquidity_universe_replication_r1.mjs \
+            artifacts/dynamic-liquidity \
+            artifacts/dynamic-liquidity-summary
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dynamic-liquidity-universe-replication-r1-summary
+          path: artifacts/dynamic-liquidity-summary/**
+          retention-days: 30
