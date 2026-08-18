@@ -1,0 +1,107 @@
+name: trend-break-retest-edge-r1
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/trend-break-retest-edge-r1.yml'
+      - 'scripts/run_trend_break_retest_edge_r1.mjs'
+      - 'scripts/aggregate_trend_break_retest_edge_r1.mjs'
+      - 'docs/TREND_BREAK_RETEST_EDGE_R1.md'
+  workflow_dispatch:
+
+concurrency:
+  group: trend-break-retest-edge-r1-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Verify frozen protocol
+        run: test "$(git rev-parse HEAD:docs/TREND_BREAK_RETEST_EDGE_R1.md)" = "11dbddd5256ebe03dac87f889036b573b3e503e8"
+      - name: Syntax checks
+        run: |
+          node --check scripts/run_trend_break_retest_edge_r1.mjs
+          node --check scripts/aggregate_trend_break_retest_edge_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        symbol:
+          - BTCUSDT
+          - ETHUSDT
+          - BNBUSDT
+          - XRPUSDT
+          - ADAUSDT
+          - SOLUSDT
+          - DOGEUSDT
+          - LINKUSDT
+          - AVAXUSDT
+          - DOTUSDT
+          - LTCUSDT
+          - ATOMUSDT
+          - AAVEUSDT
+          - NEARUSDT
+          - INJUSDT
+          - OPUSDT
+          - ARBUSDT
+          - APTUSDT
+          - SUIUSDT
+          - SEIUSDT
+          - TAOUSDT
+          - ONDOUSDT
+          - TONUSDT
+          - FETUSDT
+          - WIFUSDT
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Run frozen R1 diagnostic
+        env:
+          TBR_SYMBOL: '${{ matrix.symbol }}'
+        run: node scripts/run_trend_break_retest_edge_r1.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trend-break-retest-${{ matrix.symbol }}
+          path: runtime/trend-break-retest-r1/${{ matrix.symbol }}.*
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs: symbol
+    if: always() && needs.symbol.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: trend-break-retest-*
+          path: trend-break-retest-results
+          merge-multiple: true
+      - name: Aggregate under frozen criteria
+        run: node scripts/aggregate_trend_break_retest_edge_r1.mjs trend-break-retest-results trend-break-retest-r1-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: trend-break-retest-r1-summary
+          path: |
+            trend-break-retest-r1-summary.json
+            trend-break-retest-r1-summary.md
+          if-no-files-found: error
+          retention-days: 90
