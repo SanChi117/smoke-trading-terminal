@@ -72,7 +72,7 @@ Exact same rules using the previous completed candle's EMA50.
 
 ### Cooldown
 
-Each method/depth/side has a fixed 12-hour cooldown after an accepted touch event to reduce repeated correlated observations.
+Each EMA depth/side **touch family** has a fixed 12-hour cooldown after an accepted touch event. TOUCH and RECLAIM at the same depth share the identical base touch-event stream; this preserves a causal matched comparison instead of allowing confirmation to change which touches enter the sample.
 
 ## Fixed chronology
 
