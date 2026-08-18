@@ -1,0 +1,68 @@
+name: v5-prereaction-free-space-audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/v5-prereaction-free-space-audit.yml'
+      - 'scripts/apply-prereaction-free-space-audit.py'
+      - 'scripts/aggregate-prereaction-free-space.py'
+
+jobs:
+  window:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - { key: free-space-a, end: '2025-11-30T23:55:00.000Z' }
+          - { key: free-space-b, end: '2026-07-31T23:55:00.000Z' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Instrument pre-reaction free-space audit inside runner only
+        run: python scripts/apply-prereaction-free-space-audit.py
+      - name: Run fixed 180-day audit on 19 symbols
+        env:
+          AUDIT_SYMBOLS: 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT,ADAUSDT,AVAXUSDT,SUIUSDT,APTUSDT,NEARUSDT,LINKUSDT,AAVEUSDT,ARBUSDT,OPUSDT,DOGEUSDT,TAOUSDT,ONDOUSDT,INJUSDT,SEIUSDT'
+          AUDIT_DAYS: '180'
+          AUDIT_END_ISO: '${{ matrix.end }}'
+        run: node --experimental-strip-types scripts/run_fixed_level_audit.mjs
+      - name: Save raw free-space audit
+        run: cp runtime/level-flow-logic-audit/logic-audit.json ${{ matrix.key }}.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.key }}
+          path: ${{ matrix.key }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: window
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: free-space-*
+          path: free-space-results
+          merge-multiple: true
+      - name: Aggregate pre-reaction free-space diagnostics
+        run: python scripts/aggregate-prereaction-free-space.py free-space-results prereaction-free-space-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prereaction-free-space-summary
+          path: prereaction-free-space-summary.json
+          if-no-files-found: error
