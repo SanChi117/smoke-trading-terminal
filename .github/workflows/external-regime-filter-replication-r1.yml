@@ -1,0 +1,107 @@
+name: external-regime-filter-replication-r1
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/external-regime-filter-replication-r1.yml'
+      - 'scripts/run_external_regime_filter_replication_r1.mjs'
+      - 'scripts/aggregate_external_regime_filter_replication_r1.mjs'
+      - 'docs/EXTERNAL_REGIME_FILTER_REPLICATION_R1.md'
+  workflow_dispatch:
+
+concurrency:
+  group: external-regime-filter-replication-r1-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Verify frozen protocol
+        run: test "$(git rev-parse HEAD:docs/EXTERNAL_REGIME_FILTER_REPLICATION_R1.md)" = "d3b7945eb40dc93189c76e5bd192c861e2ba8fc3"
+      - name: Syntax checks
+        run: |
+          node --check scripts/run_external_regime_filter_replication_r1.mjs
+          node --check scripts/aggregate_external_regime_filter_replication_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        symbol:
+          - BCHUSDT
+          - TRXUSDT
+          - XLMUSDT
+          - ETCUSDT
+          - FILUSDT
+          - UNIUSDT
+          - ICPUSDT
+          - ALGOUSDT
+          - VETUSDT
+          - RUNEUSDT
+          - GALAUSDT
+          - SANDUSDT
+          - MANAUSDT
+          - CRVUSDT
+          - CHZUSDT
+          - LDOUSDT
+          - DYDXUSDT
+          - IMXUSDT
+          - STXUSDT
+          - COMPUSDT
+          - SNXUSDT
+          - ZECUSDT
+          - KAVAUSDT
+          - XTZUSDT
+          - ENJUSDT
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - name: Ensure archive tools
+        run: command -v unzip >/dev/null || (sudo apt-get update && sudo apt-get install -y unzip)
+      - name: Run frozen external gate matrix
+        env:
+          ERF_SYMBOL: '${{ matrix.symbol }}'
+        run: node scripts/run_external_regime_filter_replication_r1.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: external-regime-${{ matrix.symbol }}
+          path: runtime/external-regime-filter-replication-r1/${{ matrix.symbol }}.*
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs: symbol
+    if: always() && needs.symbol.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: external-regime-*
+          path: external-regime-results
+          merge-multiple: true
+      - name: Aggregate external gate replication
+        run: node scripts/aggregate_external_regime_filter_replication_r1.mjs external-regime-results external-regime-filter-replication-r1-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: external-regime-filter-replication-r1-summary
+          path: |
+            external-regime-filter-replication-r1-summary.json
+            external-regime-filter-replication-r1-summary.md
+          if-no-files-found: error
+          retention-days: 90
