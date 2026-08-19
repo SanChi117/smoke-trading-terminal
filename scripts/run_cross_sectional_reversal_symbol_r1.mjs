@@ -8,10 +8,13 @@ const SYMBOL = String(process.env.REV_SYMBOL ?? "BTCUSDT").trim().toUpperCase();
 const OUTPUT_DIR = path.resolve(process.env.REV_OUTPUT_DIR ?? "runtime/cross-sectional-reversal-r1");
 const CACHE_DIR = path.resolve("runtime/binance-vision-cache");
 const BASE = "https://data.binance.vision/data/futures/um";
+const FUNDING_API = "https://fapi.binance.com/fapi/v1/fundingRate";
 const LOAD_START = Date.parse("2020-01-01T00:00:00.000Z");
 const LOAD_END = Date.parse("2026-08-02T23:59:59.999Z");
 const REPORT_START = Date.parse("2021-10-01T00:00:00.000Z");
 const REPORT_END = Date.parse("2026-08-01T23:59:59.999Z");
+const FUNDING_START = Date.parse("2021-12-31T00:00:00.000Z");
+const FUNDING_END = Date.parse("2026-08-02T23:59:59.999Z");
 
 const round = (v, d = 10) => Number.isFinite(v) ? Math.round(v * 10 ** d) / 10 ** d : null;
 const pad = (v) => String(v).padStart(2, "0");
@@ -78,6 +81,43 @@ async function visionRange(symbol, start, end) {
   for (const r of rows) if (r.time >= start && r.time <= end) m.set(r.time, r);
   return [...m.values()].sort((a,b)=>a.time-b.time);
 }
+async function fundingRange(symbol, start, end) {
+  const out = [];
+  let cursor = start;
+  let pages = 0;
+  while (cursor <= end) {
+    const u = new URL(FUNDING_API);
+    u.searchParams.set("symbol", symbol);
+    u.searchParams.set("startTime", String(cursor));
+    u.searchParams.set("endTime", String(end));
+    u.searchParams.set("limit", "1000");
+    let data = null;
+    for (let a = 0; a < 6; a++) {
+      const res = await fetch(u, { cache: "no-store", headers: { "user-agent": "smoke-trading-terminal-research" } });
+      if (res.ok) { data = await res.json(); break; }
+      if (res.status !== 429 && res.status < 500) throw new Error(`Binance funding ${res.status}: ${u}`);
+      await sleep(1000 * (a + 1));
+    }
+    if (!Array.isArray(data)) throw new Error(`Binance funding retry limit: ${symbol}`);
+    if (!data.length) break;
+    for (const x of data) {
+      const fundingTime = Number(x.fundingTime);
+      const fundingRate = Number(x.fundingRate);
+      if (Number.isFinite(fundingTime) && Number.isFinite(fundingRate) && fundingTime >= start && fundingTime <= end) {
+        out.push({ fundingTime, date: dateLabel(fundingTime), fundingRate: round(fundingRate, 12) });
+      }
+    }
+    const last = Number(data.at(-1)?.fundingTime);
+    if (!Number.isFinite(last) || last < cursor || data.length < 1000) break;
+    cursor = last + 1;
+    pages += 1;
+    if (pages > 20) throw new Error(`Unexpected funding pagination depth: ${symbol}`);
+    await sleep(120);
+  }
+  const dedup = new Map();
+  for (const x of out) dedup.set(x.fundingTime, x);
+  return [...dedup.values()].sort((a,b)=>a.fundingTime-b.fundingTime);
+}
 function median(vals) {
   const a = vals.filter(Number.isFinite).sort((x,y)=>x-y); if (!a.length) return null;
   const m = Math.floor(a.length/2); return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
@@ -89,10 +129,13 @@ function std(vals) {
 }
 
 await fs.mkdir(OUTPUT_DIR, { recursive: true });
-const candles = await visionRange(SYMBOL, LOAD_START, LOAD_END);
-console.log(`[${SYMBOL}] daily=${candles.length} first=${candles[0] ? dateLabel(candles[0].time) : "n/a"} last=${candles.at(-1) ? dateLabel(candles.at(-1).time) : "n/a"}`);
+const [candles, fundingRates] = await Promise.all([
+  visionRange(SYMBOL, LOAD_START, LOAD_END),
+  fundingRange(SYMBOL, FUNDING_START, FUNDING_END),
+]);
+console.log(`[${SYMBOL}] daily=${candles.length} funding=${fundingRates.length} first=${candles[0] ? dateLabel(candles[0].time) : "n/a"} last=${candles.at(-1) ? dateLabel(candles.at(-1).time) : "n/a"}`);
 if (candles.length < 120) {
-  await fs.writeFile(path.join(OUTPUT_DIR, `${SYMBOL}.json`), JSON.stringify({version:"CROSS_SECTIONAL_REVERSAL_R1",symbol:SYMBOL,status:"INSUFFICIENT_DATA",records:[]}));
+  await fs.writeFile(path.join(OUTPUT_DIR, `${SYMBOL}.json`), JSON.stringify({version:"CROSS_SECTIONAL_REVERSAL_R1",symbol:SYMBOL,status:"INSUFFICIENT_DATA",records:[],fundingRates}));
   process.exit(0);
 }
 const listingTime = candles[0].time;
@@ -110,6 +153,6 @@ for (let i=56;i<candles.length-1;i++) {
   const nextReturn=next.close/c.close-1;
   records.push({symbol:SYMBOL,date:dateLabel(c.time),time:c.time,weekday:new Date(c.time).getUTCDay(),ageDays:round(ageDays,3),close:round(c.close,10),formationReturn56:round(formationReturn56,10),annualizedVol56:round(annualizedVol56,10),medianQuoteVolume30:round(medQ,2),nextDate:dateLabel(next.time),nextTime:next.time,nextReturn:round(nextReturn,10)});
 }
-const report={version:"CROSS_SECTIONAL_REVERSAL_R1",symbol:SYMBOL,status:"OK",generatedAt:new Date().toISOString(),listingDate:dateLabel(listingTime),records};
+const report={version:"CROSS_SECTIONAL_REVERSAL_R1",symbol:SYMBOL,status:"OK",generatedAt:new Date().toISOString(),listingDate:dateLabel(listingTime),records,fundingRates};
 await fs.writeFile(path.join(OUTPUT_DIR, `${SYMBOL}.json`), JSON.stringify(report));
-console.log(`CROSS_SECTIONAL_REVERSAL=${JSON.stringify({symbol:SYMBOL,status:"OK",records:records.length,listingDate:report.listingDate})}`);
+console.log(`CROSS_SECTIONAL_REVERSAL=${JSON.stringify({symbol:SYMBOL,status:"OK",records:records.length,fundingRates:fundingRates.length,listingDate:report.listingDate})}`);
