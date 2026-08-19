@@ -8,13 +8,12 @@ const SYMBOL = String(process.env.REV_SYMBOL ?? "BTCUSDT").trim().toUpperCase();
 const OUTPUT_DIR = path.resolve(process.env.REV_OUTPUT_DIR ?? "runtime/cross-sectional-reversal-r1");
 const CACHE_DIR = path.resolve("runtime/binance-vision-cache");
 const BASE = "https://data.binance.vision/data/futures/um";
-const FUNDING_API = "https://fapi.binance.com/fapi/v1/fundingRate";
 const LOAD_START = Date.parse("2020-01-01T00:00:00.000Z");
 const LOAD_END = Date.parse("2026-08-02T23:59:59.999Z");
 const REPORT_START = Date.parse("2021-10-01T00:00:00.000Z");
 const REPORT_END = Date.parse("2026-08-01T23:59:59.999Z");
-const FUNDING_START = Date.parse("2021-12-31T00:00:00.000Z");
-const FUNDING_END = Date.parse("2026-08-02T23:59:59.999Z");
+const FUNDING_START = Date.parse("2021-12-01T00:00:00.000Z");
+const FUNDING_END = Date.parse("2026-07-31T23:59:59.999Z");
 
 const round = (v, d = 10) => Number.isFinite(v) ? Math.round(v * 10 ** d) / 10 ** d : null;
 const pad = (v) => String(v).padStart(2, "0");
@@ -37,8 +36,28 @@ function parseCsv(csv) {
   }
   return out;
 }
+function parseFundingCsv(csv) {
+  const lines = csv.trim().split(/\r?\n/).filter(Boolean);
+  if (!lines.length) return [];
+  const first = lines[0].split(",").map(x => x.trim().toLowerCase());
+  const hasHeader = first.some(x => x === "calc_time" || x === "last_funding_rate" || x === "funding_rate");
+  const timeIdx = hasHeader ? first.indexOf("calc_time") : 0;
+  let rateIdx = hasHeader ? first.indexOf("last_funding_rate") : 2;
+  if (rateIdx < 0 && hasHeader) rateIdx = first.indexOf("funding_rate");
+  if (timeIdx < 0 || rateIdx < 0) throw new Error("Unsupported Binance Vision fundingRate CSV schema");
+  const out = [];
+  for (let i = hasHeader ? 1 : 0; i < lines.length; i++) {
+    const c = lines[i].split(",");
+    const fundingTime = normalizeTime(c[timeIdx]);
+    const fundingRate = Number(c[rateIdx]);
+    if (Number.isFinite(fundingTime) && Number.isFinite(fundingRate)) {
+      out.push({ fundingTime, date: dateLabel(fundingTime), fundingRate: round(fundingRate, 12) });
+    }
+  }
+  return out;
+}
 async function sleep(ms) { await new Promise(r => setTimeout(r, ms)); }
-async function readZip(url, key) {
+async function readZipRaw(url, key) {
   await fs.mkdir(CACHE_DIR, { recursive: true });
   const cached = path.join(CACHE_DIR, `${key}.zip`);
   let bytes = null;
@@ -58,8 +77,12 @@ async function readZip(url, key) {
     await fs.writeFile(tmp, bytes);
     const r = spawnSync("unzip", ["-p", tmp], { encoding: "utf8", maxBuffer: 128 * 1024 * 1024 });
     if (r.status !== 0) throw new Error(`unzip failed: ${r.stderr}`);
-    return parseCsv(r.stdout);
+    return r.stdout;
   } finally { await fs.rm(tmp, { force: true }); }
+}
+async function readZip(url, key) {
+  const raw = await readZipRaw(url, key);
+  return raw == null ? null : parseCsv(raw);
 }
 async function visionRange(symbol, start, end) {
   const rows = [];
@@ -83,36 +106,13 @@ async function visionRange(symbol, start, end) {
 }
 async function fundingRange(symbol, start, end) {
   const out = [];
-  let cursor = start;
-  let pages = 0;
-  while (cursor <= end) {
-    const u = new URL(FUNDING_API);
-    u.searchParams.set("symbol", symbol);
-    u.searchParams.set("startTime", String(cursor));
-    u.searchParams.set("endTime", String(end));
-    u.searchParams.set("limit", "1000");
-    let data = null;
-    for (let a = 0; a < 6; a++) {
-      const res = await fetch(u, { cache: "no-store", headers: { "user-agent": "smoke-trading-terminal-research" } });
-      if (res.ok) { data = await res.json(); break; }
-      if (res.status !== 429 && res.status < 500) throw new Error(`Binance funding ${res.status}: ${u}`);
-      await sleep(1000 * (a + 1));
-    }
-    if (!Array.isArray(data)) throw new Error(`Binance funding retry limit: ${symbol}`);
-    if (!data.length) break;
-    for (const x of data) {
-      const fundingTime = Number(x.fundingTime);
-      const fundingRate = Number(x.fundingRate);
-      if (Number.isFinite(fundingTime) && Number.isFinite(fundingRate) && fundingTime >= start && fundingTime <= end) {
-        out.push({ fundingTime, date: dateLabel(fundingTime), fundingRate: round(fundingRate, 12) });
-      }
-    }
-    const last = Number(data.at(-1)?.fundingTime);
-    if (!Number.isFinite(last) || last < cursor || data.length < 1000) break;
-    cursor = last + 1;
-    pages += 1;
-    if (pages > 20) throw new Error(`Unexpected funding pagination depth: ${symbol}`);
-    await sleep(120);
+  for (let cur = monthStart(start); cur <= monthStart(end); cur = nextMonth(cur)) {
+    const ml = monthLabel(cur);
+    const key = `${symbol}-fundingRate-${ml}`;
+    const raw = await readZipRaw(`${BASE}/monthly/fundingRate/${symbol}/${key}.zip`, key);
+    if (raw == null) continue;
+    const rows = parseFundingCsv(raw);
+    for (const x of rows) if (x.fundingTime >= start && x.fundingTime <= end) out.push(x);
   }
   const dedup = new Map();
   for (const x of out) dedup.set(x.fundingTime, x);
@@ -151,7 +151,7 @@ for (let i=56;i<candles.length-1;i++) {
   const medQ=median(candles.slice(i-29,i+1).map(x=>x.quoteVolume));
   const ageDays=(c.time-listingTime)/DAY;
   const nextReturn=next.close/c.close-1;
-  records.push({symbol:SYMBOL,date:dateLabel(c.time),time:c.time,weekday:new Date(c.time).getUTCDay(),ageDays:round(ageDays,3),close:round(c.close,10),formationReturn56:round(formationReturn56,10),annualizedVol56:round(annualizedVol56,10),medianQuoteVolume30:round(medQ,2),nextDate:dateLabel(next.time),nextTime:next.time,nextReturn:round(nextReturn,10)});
+  records.push({symbol:SYMBOL,date:dateLabel(c.time),time:c.time,weekday:new Date(c.time).getUTCDay(),ageDays:round(ageDays,3),close:round(c.close,10),formationReturn56:round(formationReturn56,10),annualizedVol56:round(annualizedVol56,10),medianQuoteVolume30:round(medQ,2),ageDays:round(ageDays,3),nextDate:dateLabel(next.time),nextTime:next.time,nextReturn:round(nextReturn,10)});
 }
 const report={version:"CROSS_SECTIONAL_REVERSAL_R1",symbol:SYMBOL,status:"OK",generatedAt:new Date().toISOString(),listingDate:dateLabel(listingTime),records,fundingRates};
 await fs.writeFile(path.join(OUTPUT_DIR, `${SYMBOL}.json`), JSON.stringify(report));
