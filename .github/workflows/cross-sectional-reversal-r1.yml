@@ -5,8 +5,10 @@ on:
     branches: [main]
     paths:
       - 'docs/CROSS_SECTIONAL_REVERSAL_R1.md'
+      - 'docs/CROSS_SECTIONAL_REVERSAL_ACTUAL_FUNDING_R1.md'
       - 'scripts/run_cross_sectional_reversal_symbol_r1.mjs'
       - 'scripts/aggregate_cross_sectional_reversal_r1.mjs'
+      - 'scripts/aggregate_cross_sectional_reversal_actual_funding_r1.mjs'
       - '.github/workflows/cross-sectional-reversal-r1.yml'
   workflow_dispatch:
 
@@ -24,12 +26,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - name: Freeze protocol blob
-        run: sha256sum docs/CROSS_SECTIONAL_REVERSAL_R1.md
+      - name: Freeze protocol blobs
+        run: |
+          sha256sum docs/CROSS_SECTIONAL_REVERSAL_R1.md
+          sha256sum docs/CROSS_SECTIONAL_REVERSAL_ACTUAL_FUNDING_R1.md
       - name: Syntax check
         run: |
           node --check scripts/run_cross_sectional_reversal_symbol_r1.mjs
           node --check scripts/aggregate_cross_sectional_reversal_r1.mjs
+          node --check scripts/aggregate_cross_sectional_reversal_actual_funding_r1.mjs
 
   symbol:
     needs: validate
@@ -96,7 +101,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
       - name: Install unzip
         run: sudo apt-get update -qq && sudo apt-get install -y unzip
-      - name: Run symbol
+      - name: Run symbol with market and funding history
         env:
           REV_SYMBOL: ${{ matrix.symbol }}
           REV_OUTPUT_DIR: runtime/cross-sectional-reversal-r1
@@ -120,13 +125,23 @@ jobs:
           pattern: reversal-*
           path: runtime/cross-sectional-reversal-r1-input
           merge-multiple: true
-      - name: Aggregate portfolio
+      - name: Aggregate original synthetic-stress portfolio
         env:
           REV_INPUT_DIR: runtime/cross-sectional-reversal-r1-input
           REV_SUMMARY_DIR: runtime/cross-sectional-reversal-r1-summary
         run: node scripts/aggregate_cross_sectional_reversal_r1.mjs
+      - name: Aggregate actual Binance funding portfolio
+        env:
+          REV_INPUT_DIR: runtime/cross-sectional-reversal-r1-input
+          REV_ACTUAL_FUNDING_DIR: runtime/cross-sectional-reversal-actual-funding-r1-summary
+        run: node scripts/aggregate_cross_sectional_reversal_actual_funding_r1.mjs
       - uses: actions/upload-artifact@v4
         with:
           name: cross-sectional-reversal-r1-summary
           path: runtime/cross-sectional-reversal-r1-summary/**
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cross-sectional-reversal-actual-funding-r1-summary
+          path: runtime/cross-sectional-reversal-actual-funding-r1-summary/**
           retention-days: 14
