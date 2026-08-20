@@ -1,6 +1,14 @@
 name: cross-sectional-reversal-prospective-r1
 
 on:
+  push:
+    branches: [research/cross-sectional-reversal-prospective-r1]
+    paths:
+      - 'docs/CROSS_SECTIONAL_REVERSAL_PROSPECTIVE_R1.md'
+      - 'scripts/run_cross_sectional_reversal_prospective_symbol_r1.mjs'
+      - 'scripts/aggregate_cross_sectional_reversal_prospective_r1.mjs'
+      - '.github/workflows/cross-sectional-reversal-prospective-r1.yml'
+      - 'research/prospective-reversal-snapshot-trigger.txt'
   pull_request:
     branches: [research/cross-sectional-reversal-r1]
     paths:
