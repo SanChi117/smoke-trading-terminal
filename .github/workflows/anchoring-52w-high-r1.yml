@@ -1,0 +1,82 @@
+name: anchoring-52w-high-r1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/ANCHORING_52W_HIGH_R1.md'
+      - 'scripts/run_anchoring_52w_high_symbol_r1.mjs'
+      - 'scripts/aggregate_anchoring_52w_high_r1.mjs'
+      - '.github/workflows/anchoring-52w-high-r1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Freeze protocol blob
+        run: sha256sum docs/ANCHORING_52W_HIGH_R1.md
+      - name: Syntax check
+        run: |
+          node --check scripts/run_anchoring_52w_high_symbol_r1.mjs
+          node --check scripts/aggregate_anchoring_52w_high_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        symbol: [BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,ADAUSDT,SOLUSDT,DOGEUSDT,LINKUSDT,AVAXUSDT,DOTUSDT,LTCUSDT,ATOMUSDT,AAVEUSDT,NEARUSDT,INJUSDT,OPUSDT,ARBUSDT,APTUSDT,SUIUSDT,SEIUSDT,TAOUSDT,ONDOUSDT,TONUSDT,FETUSDT,WIFUSDT,BCHUSDT,TRXUSDT,XLMUSDT,ETCUSDT,FILUSDT,UNIUSDT,ICPUSDT,ALGOUSDT,VETUSDT,RUNEUSDT,GALAUSDT,SANDUSDT,MANAUSDT,CRVUSDT,CHZUSDT,LDOUSDT,DYDXUSDT,IMXUSDT,STXUSDT,COMPUSDT,SNXUSDT,ZECUSDT,KAVAUSDT,XTZUSDT,ENJUSDT]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y unzip
+      - name: Run symbol loader
+        env:
+          A52_SYMBOL: ${{ matrix.symbol }}
+          A52_OUTPUT_DIR: runtime/anchoring-52w-high-r1
+        run: node scripts/run_anchoring_52w_high_symbol_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: a52-${{ matrix.symbol }}
+          path: runtime/anchoring-52w-high-r1/${{ matrix.symbol }}.json
+          retention-days: 14
+
+  aggregate:
+    needs: symbol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: a52-*
+          path: runtime/anchoring-52w-high-r1-input
+          merge-multiple: true
+      - name: Aggregate R1
+        env:
+          A52_INPUT_DIR: runtime/anchoring-52w-high-r1-input
+          A52_SUMMARY_DIR: runtime/anchoring-52w-high-r1-summary
+        run: node scripts/aggregate_anchoring_52w_high_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anchoring-52w-high-r1-summary
+          path: runtime/anchoring-52w-high-r1-summary/**
+          retention-days: 30
