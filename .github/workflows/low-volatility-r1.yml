@@ -1,0 +1,82 @@
+name: low-volatility-r1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/LOW_VOLATILITY_R1.md'
+      - 'scripts/run_low_volatility_symbol_r1.mjs'
+      - 'scripts/aggregate_low_volatility_r1.mjs'
+      - '.github/workflows/low-volatility-r1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Freeze protocol blob
+        run: sha256sum docs/LOW_VOLATILITY_R1.md
+      - name: Syntax check
+        run: |
+          node --check scripts/run_low_volatility_symbol_r1.mjs
+          node --check scripts/aggregate_low_volatility_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        symbol: [BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,ADAUSDT,SOLUSDT,DOGEUSDT,LINKUSDT,AVAXUSDT,DOTUSDT,LTCUSDT,ATOMUSDT,AAVEUSDT,NEARUSDT,INJUSDT,OPUSDT,ARBUSDT,APTUSDT,SUIUSDT,SEIUSDT,TAOUSDT,ONDOUSDT,TONUSDT,FETUSDT,WIFUSDT,BCHUSDT,TRXUSDT,XLMUSDT,ETCUSDT,FILUSDT,UNIUSDT,ICPUSDT,ALGOUSDT,VETUSDT,RUNEUSDT,GALAUSDT,SANDUSDT,MANAUSDT,CRVUSDT,CHZUSDT,LDOUSDT,DYDXUSDT,IMXUSDT,STXUSDT,COMPUSDT,SNXUSDT,ZECUSDT,KAVAUSDT,XTZUSDT,ENJUSDT]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y unzip
+      - name: Run symbol loader
+        env:
+          LV_SYMBOL: ${{ matrix.symbol }}
+          LV_OUTPUT_DIR: runtime/low-volatility-r1
+        run: node scripts/run_low_volatility_symbol_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lv-${{ matrix.symbol }}
+          path: runtime/low-volatility-r1/${{ matrix.symbol }}.json
+          retention-days: 14
+
+  aggregate:
+    needs: symbol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lv-*
+          path: runtime/low-volatility-r1-input
+          merge-multiple: true
+      - name: Aggregate R1
+        env:
+          LV_INPUT_DIR: runtime/low-volatility-r1-input
+          LV_SUMMARY_DIR: runtime/low-volatility-r1-summary
+        run: node scripts/aggregate_low_volatility_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: low-volatility-r1-summary
+          path: runtime/low-volatility-r1-summary/**
+          retention-days: 30
