@@ -1,0 +1,82 @@
+name: skewness-risk-r1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/SKEWNESS_RISK_R1.md'
+      - 'scripts/run_skewness_risk_symbol_r1.mjs'
+      - 'scripts/aggregate_skewness_risk_r1.mjs'
+      - '.github/workflows/skewness-risk-r1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Freeze protocol blob
+        run: sha256sum docs/SKEWNESS_RISK_R1.md
+      - name: Syntax check
+        run: |
+          node --check scripts/run_skewness_risk_symbol_r1.mjs
+          node --check scripts/aggregate_skewness_risk_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        symbol: [BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,ADAUSDT,SOLUSDT,DOGEUSDT,LINKUSDT,AVAXUSDT,DOTUSDT,LTCUSDT,ATOMUSDT,AAVEUSDT,NEARUSDT,INJUSDT,OPUSDT,ARBUSDT,APTUSDT,SUIUSDT,SEIUSDT,TAOUSDT,ONDOUSDT,TONUSDT,FETUSDT,WIFUSDT,BCHUSDT,TRXUSDT,XLMUSDT,ETCUSDT,FILUSDT,UNIUSDT,ICPUSDT,ALGOUSDT,VETUSDT,RUNEUSDT,GALAUSDT,SANDUSDT,MANAUSDT,CRVUSDT,CHZUSDT,LDOUSDT,DYDXUSDT,IMXUSDT,STXUSDT,COMPUSDT,SNXUSDT,ZECUSDT,KAVAUSDT,XTZUSDT,ENJUSDT]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y unzip
+      - name: Run symbol loader
+        env:
+          SK_SYMBOL: ${{ matrix.symbol }}
+          SK_OUTPUT_DIR: runtime/skewness-risk-r1
+        run: node scripts/run_skewness_risk_symbol_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sk-${{ matrix.symbol }}
+          path: runtime/skewness-risk-r1/${{ matrix.symbol }}.json
+          retention-days: 14
+
+  aggregate:
+    needs: symbol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sk-*
+          path: runtime/skewness-risk-r1-input
+          merge-multiple: true
+      - name: Aggregate R1
+        env:
+          SK_INPUT_DIR: runtime/skewness-risk-r1-input
+          SK_SUMMARY_DIR: runtime/skewness-risk-r1-summary
+        run: node scripts/aggregate_skewness_risk_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skewness-risk-r1-summary
+          path: runtime/skewness-risk-r1-summary/**
+          retention-days: 30
