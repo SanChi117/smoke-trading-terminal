@@ -1,0 +1,71 @@
+name: past-alpha-r1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/PAST_ALPHA_R1.md'
+      - 'scripts/run_past_alpha_symbol_r1.mjs'
+      - 'scripts/aggregate_past_alpha_r1.mjs'
+      - '.github/workflows/past-alpha-r1.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check scripts/run_past_alpha_symbol_r1.mjs
+      - run: node --check scripts/aggregate_past_alpha_r1.mjs
+      - run: test -s docs/PAST_ALPHA_R1.md
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        symbol: [ETHUSDT,BNBUSDT,XRPUSDT,ADAUSDT,SOLUSDT,DOGEUSDT,LINKUSDT,AVAXUSDT,DOTUSDT,LTCUSDT,ATOMUSDT,AAVEUSDT,NEARUSDT,INJUSDT,OPUSDT,ARBUSDT,APTUSDT,SUIUSDT,SEIUSDT,TAOUSDT,ONDOUSDT,TONUSDT,FETUSDT,WIFUSDT,BCHUSDT,TRXUSDT,XLMUSDT,ETCUSDT,FILUSDT,UNIUSDT,ICPUSDT,ALGOUSDT,VETUSDT,RUNEUSDT,GALAUSDT,SANDUSDT,MANAUSDT,CRVUSDT,CHZUSDT,LDOUSDT,DYDXUSDT,IMXUSDT,STXUSDT,COMPUSDT,SNXUSDT,ZECUSDT,KAVAUSDT,XTZUSDT,ENJUSDT]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run symbol
+        env:
+          PA_SYMBOL: ${{ matrix.symbol }}
+          PA_OUTPUT_DIR: runtime/past-alpha-r1
+        run: node scripts/run_past_alpha_symbol_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: past-alpha-${{ matrix.symbol }}
+          path: runtime/past-alpha-r1/${{ matrix.symbol }}.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: symbol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: past-alpha-*
+          path: runtime/past-alpha-r1-input
+          merge-multiple: true
+      - name: Aggregate
+        env:
+          PA_INPUT_DIR: runtime/past-alpha-r1-input
+          PA_SUMMARY_DIR: runtime/past-alpha-r1-summary
+        run: node scripts/aggregate_past_alpha_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: past-alpha-r1-summary
+          path: runtime/past-alpha-r1-summary
+          if-no-files-found: error
