@@ -1,0 +1,28 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
+const INPUT_DIR=path.resolve(process.env.LV_INPUT_DIR??"runtime/low-volatility-prospective-r1-input");
+const OUTPUT_DIR=path.resolve(process.env.LV_SUMMARY_DIR??"runtime/low-volatility-prospective-r1-summary");
+const HOLDOUT_START=Date.parse("2026-08-21T00:00:00.000Z");
+const BASE_COST=0.0008,DOUBLE_COST=0.0016,MIN_DAYS=180,MIN_FORMATIONS=6;
+const dl=t=>new Date(t).toISOString().slice(0,10),mk=t=>{const d=new Date(t);return`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}`};
+const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:0;
+function std(a){if(a.length<2)return 0;const m=mean(a);return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1));}
+function median(a){const x=a.filter(Number.isFinite).sort((p,q)=>p-q);if(!x.length)return 0;const m=Math.floor(x.length/2);return x.length%2?x[m]:(x[m-1]+x[m])/2;}
+function mdd(r){let e=1,p=1,d=0;for(const x of r){e*=1+x;p=Math.max(p,e);d=Math.min(d,e/p-1);}return d;}
+function metrics(rows){const r=rows.map(x=>x.netReturn).filter(Number.isFinite);if(!r.length)return{days:0,cumulativeReturn:0,cagr:0,annualizedVol:0,sharpe:0,maxDrawdown:0,turnover:0};const total=r.reduce((e,x)=>e*(1+x),1),yrs=r.length/365,v=std(r)*Math.sqrt(365),ann=mean(r)*365;return{days:r.length,cumulativeReturn:total-1,cagr:yrs>0?total**(1/yrs)-1:0,annualizedVol:v,sharpe:v>0?ann/v:0,maxDrawdown:mdd(r),turnover:rows.reduce((s,x)=>s+x.turnover,0)};}
+function turnover(prev,next){const s=new Set([...prev.keys(),...next.keys()]);let x=0;for(const k of s)x+=Math.abs((next.get(k)||0)-(prev.get(k)||0));return 0.5*x;}
+function coverage(rows){const d=rows.reduce((s,r)=>s+r.fundingCoverageDenom,0),n=rows.reduce((s,r)=>s+r.fundingCoverageNumer,0);return d>0?n/d:0;}
+await fs.mkdir(OUTPUT_DIR,{recursive:true});
+const files=(await fs.readdir(INPUT_DIR)).filter(f=>f.endsWith(".json"));
+const by=new Map(),fundBy=new Map();
+for(const f of files){const p=JSON.parse(await fs.readFile(path.join(INPUT_DIR,f),"utf8"));if(p.status!=="OK")continue;by.set(p.symbol,new Map((p.records||[]).map(r=>[Number(r.time),r])));const fm=new Map();for(const x of p.fundingRates||[]){const t=Number(x.fundingTime),rate=Number(x.fundingRate);if(!Number.isFinite(t)||!Number.isFinite(rate))continue;const d=dl(t);if(!fm.has(d))fm.set(d,[]);fm.get(d).push(rate);}fundBy.set(p.symbol,fm);}
+if(by.size<10)throw new Error(`Too few symbols: ${by.size}`);
+const times=[...new Set([...by.values()].flatMap(m=>[...m.keys()]))].sort((a,b)=>a-b).filter(t=>t>=HOLDOUT_START);
+const monthEnds=new Set();for(let i=0;i<times.length;i++){const t=times[i],n=times[i+1];if(n&&mk(n)!==mk(t))monthEnds.add(t);}
+function formation(t){const e=[];for(const[s,m]of by){const r=m.get(t);if(!r||r.ageDays<365||r.medianQuoteVolume30<2_000_000||!Number.isFinite(r.realizedVol60))continue;e.push({s,v:r.realizedVol60});}e.sort((a,b)=>a.v-b.v);if(e.length<10)return{eligible:e.length,long:[],short:[],w:new Map()};const k=Math.max(1,Math.floor(e.length*.2)),lo=e.slice(0,k),hi=e.slice(-k),w=new Map();for(const x of lo)w.set(x.s,.5/lo.length);for(const x of hi)w.set(x.s,-.5/hi.length);return{eligible:e.length,long:lo.map(x=>x.s),short:hi.map(x=>x.s),w};}
+function run(cost){let cur=new Map(),prev=new Map();const rows=[],forms=[];for(const t of times){const sample=[...by.values()].map(m=>m.get(t)).find(Boolean);if(!sample)continue;if(monthEnds.has(t)){const f=formation(t);cur=f.w;forms.push({date:dl(t),eligibleCount:f.eligible,longCount:f.long.length,shortCount:f.short.length,long:f.long,short:f.short});}if(!Number.isFinite(Number(sample.nextTime)))continue;let turn=turnover(prev,cur),price=0,funding=0,cn=0,cd=0,fd=dl(Number(sample.nextTime));for(const[s,w]of cur){const r=by.get(s)?.get(t);if(!r||!Number.isFinite(r.nextReturn))continue;price+=w*r.nextReturn;const aw=Math.abs(w);cd+=aw;const rr=fundBy.get(s)?.get(fd)||[];if(rr.length){cn+=aw;for(const z of rr)funding+=-w*z;}}rows.push({date:dl(t),time:t,turnover:turn,cost:turn*cost,pricePnl:price,fundingPnl:funding,netReturn:price+funding-turn*cost,gross:[...cur.values()].reduce((s,v)=>s+Math.abs(v),0),fundingCoverageNumer:cn,fundingCoverageDenom:cd});prev=new Map(cur);}return{costRate:cost,rows,forms,metrics:metrics(rows),fundingCoverage:coverage(rows)};}
+const base=run(BASE_COST),stress=run(DOUBLE_COST),active=base.forms.filter(f=>f.longCount>0&&f.shortCount>0),mature=base.rows.length>=MIN_DAYS&&active.length>=MIN_FORMATIONS;
+let verdict="PROSPECTIVE_COLLECTING";if(mature){if(base.metrics.cumulativeReturn>0&&base.metrics.sharpe>=.50&&base.metrics.maxDrawdown>=-.30&&base.fundingCoverage>=.99&&stress.metrics.cumulativeReturn>0)verdict="PROSPECTIVE_SUPPORTS_LOW_VOLATILITY_R1";else if(base.metrics.cumulativeReturn>0)verdict="PROSPECTIVE_LOW_VOL_INTERESTING_NOT_PROVEN";else verdict="PROSPECTIVE_REJECTS_LOW_VOLATILITY_R1";}
+const summary={version:"LOW_VOLATILITY_PROSPECTIVE_R1",generatedAt:new Date().toISOString(),holdoutStart:"2026-08-21",symbolsLoaded:by.size,latestEvaluatedDate:base.rows.length?base.rows.at(-1).date:null,prospectiveDays:base.rows.length,formations:active.length,minimumDays:MIN_DAYS,minimumFormations:MIN_FORMATIONS,mature,verdict,base:{metrics:base.metrics,fundingCoverage:base.fundingCoverage},doubleCosts:{metrics:stress.metrics,fundingCoverage:stress.fundingCoverage},medianEligible:median(active.map(f=>f.eligibleCount))};
+await fs.writeFile(path.join(OUTPUT_DIR,"summary.json"),JSON.stringify(summary,null,2));await fs.writeFile(path.join(OUTPUT_DIR,"base-daily.json"),JSON.stringify(base.rows));await fs.writeFile(path.join(OUTPUT_DIR,"formations.json"),JSON.stringify(base.forms,null,2));console.log(`PROSPECTIVE_LOW_VOL_SUMMARY=${JSON.stringify(summary)}`);
