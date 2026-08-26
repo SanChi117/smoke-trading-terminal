@@ -1,0 +1,72 @@
+name: basis-convergence-r1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/BASIS_CONVERGENCE_R1.md'
+      - 'scripts/run_basis_convergence_symbol_r1.mjs'
+      - 'scripts/aggregate_basis_convergence_r1.mjs'
+      - '.github/workflows/basis-convergence-r1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '${{ env.NODE_VERSION }}'}
+      - run: sha256sum docs/BASIS_CONVERGENCE_R1.md
+      - run: |
+          node --check scripts/run_basis_convergence_symbol_r1.mjs
+          node --check scripts/aggregate_basis_convergence_r1.mjs
+  symbol:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        symbol: [BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,ADAUSDT,SOLUSDT,DOGEUSDT,LINKUSDT,AVAXUSDT,DOTUSDT,LTCUSDT,ATOMUSDT,AAVEUSDT,NEARUSDT,INJUSDT,OPUSDT,ARBUSDT,APTUSDT,SUIUSDT,SEIUSDT,TAOUSDT,ONDOUSDT,TONUSDT,FETUSDT,WIFUSDT,BCHUSDT,TRXUSDT,XLMUSDT,ETCUSDT,FILUSDT,UNIUSDT,ICPUSDT,ALGOUSDT,VETUSDT,RUNEUSDT,GALAUSDT,SANDUSDT,MANAUSDT,CRVUSDT,CHZUSDT,LDOUSDT,DYDXUSDT,IMXUSDT,STXUSDT,COMPUSDT,SNXUSDT,ZECUSDT,KAVAUSDT,XTZUSDT,ENJUSDT]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '${{ env.NODE_VERSION }}'}
+      - run: sudo apt-get update -qq && sudo apt-get install -y unzip
+      - env:
+          BC_SYMBOL: ${{ matrix.symbol }}
+          BC_OUTPUT_DIR: runtime/basis-convergence-r1
+        run: node scripts/run_basis_convergence_symbol_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bc-${{ matrix.symbol }}
+          path: runtime/basis-convergence-r1/${{ matrix.symbol }}.json
+          retention-days: 14
+  aggregate:
+    needs: symbol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '${{ env.NODE_VERSION }}'}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bc-*
+          path: runtime/basis-convergence-r1-input
+          merge-multiple: true
+      - env:
+          BC_INPUT_DIR: runtime/basis-convergence-r1-input
+          BC_SUMMARY_DIR: runtime/basis-convergence-r1-summary
+        run: node scripts/aggregate_basis_convergence_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: basis-convergence-r1-summary
+          path: runtime/basis-convergence-r1-summary/**
+          retention-days: 30
