@@ -1,2 +1,4 @@
-snapshot_requested_at=2026-08-20T17:08:00Z
-purpose=baseline_freeze_before_holdout_start_2026-08-21
+snapshot_requested_at=2026-08-29T12:40:00Z
+purpose=prospective_holdout_snapshot
+freeze=2026-08-21T00:00:00Z
+no_economic_rule_changes=true
