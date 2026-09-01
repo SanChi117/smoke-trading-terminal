@@ -1,4 +1,5 @@
 Prospective low-volatility snapshot trigger.
 Freeze: 2026-08-21T00:00:00Z.
-Snapshot requested at: 2026-08-29T12:40:00Z.
+Snapshot requested at: 2026-09-01T18:30:00Z.
+Expected funding cutoff: 2026-08-31.
 No economic-rule changes permitted.
