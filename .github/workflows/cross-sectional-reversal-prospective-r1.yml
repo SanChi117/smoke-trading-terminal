@@ -1,0 +1,140 @@
+name: cross-sectional-reversal-prospective-r1
+
+on:
+  push:
+    branches: [research/cross-sectional-reversal-prospective-r1]
+    paths:
+      - 'docs/CROSS_SECTIONAL_REVERSAL_PROSPECTIVE_R1.md'
+      - 'scripts/run_cross_sectional_reversal_prospective_symbol_r1.mjs'
+      - 'scripts/aggregate_cross_sectional_reversal_prospective_r1.mjs'
+      - '.github/workflows/cross-sectional-reversal-prospective-r1.yml'
+      - 'research/prospective-reversal-snapshot-trigger.txt'
+  pull_request:
+    branches: [research/cross-sectional-reversal-r1]
+    paths:
+      - 'docs/CROSS_SECTIONAL_REVERSAL_PROSPECTIVE_R1.md'
+      - 'scripts/run_cross_sectional_reversal_prospective_symbol_r1.mjs'
+      - 'scripts/aggregate_cross_sectional_reversal_prospective_r1.mjs'
+      - '.github/workflows/cross-sectional-reversal-prospective-r1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Freeze prospective protocol
+        run: sha256sum docs/CROSS_SECTIONAL_REVERSAL_PROSPECTIVE_R1.md
+      - name: Syntax check
+        run: |
+          node --check scripts/run_cross_sectional_reversal_prospective_symbol_r1.mjs
+          node --check scripts/aggregate_cross_sectional_reversal_prospective_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        symbol:
+          - BTCUSDT
+          - ETHUSDT
+          - BNBUSDT
+          - XRPUSDT
+          - ADAUSDT
+          - SOLUSDT
+          - DOGEUSDT
+          - LINKUSDT
+          - AVAXUSDT
+          - DOTUSDT
+          - LTCUSDT
+          - ATOMUSDT
+          - AAVEUSDT
+          - NEARUSDT
+          - INJUSDT
+          - OPUSDT
+          - ARBUSDT
+          - APTUSDT
+          - SUIUSDT
+          - SEIUSDT
+          - TAOUSDT
+          - ONDOUSDT
+          - TONUSDT
+          - FETUSDT
+          - WIFUSDT
+          - BCHUSDT
+          - TRXUSDT
+          - XLMUSDT
+          - ETCUSDT
+          - FILUSDT
+          - UNIUSDT
+          - ICPUSDT
+          - ALGOUSDT
+          - VETUSDT
+          - RUNEUSDT
+          - GALAUSDT
+          - SANDUSDT
+          - MANAUSDT
+          - CRVUSDT
+          - CHZUSDT
+          - LDOUSDT
+          - DYDXUSDT
+          - IMXUSDT
+          - STXUSDT
+          - COMPUSDT
+          - SNXUSDT
+          - ZECUSDT
+          - KAVAUSDT
+          - XTZUSDT
+          - ENJUSDT
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install unzip
+        run: sudo apt-get update -qq && sudo apt-get install -y unzip
+      - name: Run prospective symbol snapshot
+        env:
+          REV_SYMBOL: ${{ matrix.symbol }}
+          REV_OUTPUT_DIR: runtime/cross-sectional-reversal-prospective-r1
+        run: node scripts/run_cross_sectional_reversal_prospective_symbol_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prospective-reversal-${{ matrix.symbol }}
+          path: runtime/cross-sectional-reversal-prospective-r1/${{ matrix.symbol }}.json
+          retention-days: 30
+
+  aggregate:
+    needs: symbol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prospective-reversal-*
+          path: runtime/cross-sectional-reversal-prospective-r1-input
+          merge-multiple: true
+      - name: Aggregate prospective holdout
+        env:
+          REV_INPUT_DIR: runtime/cross-sectional-reversal-prospective-r1-input
+          REV_SUMMARY_DIR: runtime/cross-sectional-reversal-prospective-r1-summary
+        run: node scripts/aggregate_cross_sectional_reversal_prospective_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cross-sectional-reversal-prospective-r1-summary
+          path: runtime/cross-sectional-reversal-prospective-r1-summary/**
+          retention-days: 90
