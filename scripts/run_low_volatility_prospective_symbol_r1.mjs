@@ -9,7 +9,11 @@ function previousMonthEnd(now=new Date()){return Date.UTC(now.getUTCFullYear(),n
 function iso(t){return new Date(t).toISOString();}
 const cutoff = process.env.LV_FUNDING_CUTOFF ? Date.parse(`${process.env.LV_FUNDING_CUTOFF}T23:59:59.999Z`) : previousMonthEnd();
 if(!Number.isFinite(cutoff)) throw new Error("Invalid LV_FUNDING_CUTOFF");
-const reportEnd=cutoff-DAY, loadEnd=cutoff;
+// Engineering-only boundary fix: preserve the closed month-end record so the
+// monthly formation can be frozen at that close. Load one extra kline only to
+// populate nextTime/nextReturn in the source report; the aggregator refuses to
+// score any next-day PnL whose funding date is beyond the archived cutoff.
+const reportEnd=cutoff, loadEnd=cutoff+DAY;
 const source=await fs.readFile(SOURCE,"utf8");
 let patched=source;
 patched=patched.replace(/const LOAD_END=Date\.parse\("[^"]+"\);/,`const LOAD_END=Date.parse("${iso(loadEnd)}");`);
