@@ -1,0 +1,6 @@
+Prospective low-volatility snapshot trigger.
+Freeze: 2026-08-21T00:00:00Z.
+Snapshot requested after Binance Vision next-day kline became available: 2026-09-02T11:32:00Z.
+Expected funding cutoff: 2026-08-31.
+Expected active formation: 2026-08-31 month-end.
+No economic-rule changes permitted.
