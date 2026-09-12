@@ -7,7 +7,7 @@
 - Canonical branch: `main`
 - Starting SHA: `f808b01522a4eb72afec9c83595b208e42a6f39f`
 - Rollback tag: `smoke-os-pre-refactor-f808b01`
-- Current phase: Phase 0 — audit, contracts and safe migration foundation
+- Current phase: Phase 1 — professional UI and chart foundation
 
 ## Baseline verification
 
@@ -33,9 +33,9 @@ Executed before structural changes on 2026-09-12:
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Audit / rollback | IN PROGRESS | Starting SHA and local rollback tag recorded |
+| Audit / rollback | COMPLETE | Starting SHA and remote rollback branch recorded |
 | Domain contracts | IN PROGRESS | New modules are adapters around existing behavior, not strategy rewrites |
-| Professional chart | PLANNED | Lightweight Charts selected by ADR-0002 |
+| Professional chart | IN PROGRESS | Lightweight Charts 5.2.1 is now the primary engine; legacy drawings remain available during parity migration |
 | Market data facade | PLANNED | Existing Binance client will become the first adapter |
 | Unified ledger | PLANNED | D1/SQLite-compatible schema first, PostgreSQL target documented |
 | Brains / conflicts | IN PROGRESS | Frozen V5/QFVG remain legacy signal adapters |
