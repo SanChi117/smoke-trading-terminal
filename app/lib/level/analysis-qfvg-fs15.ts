@@ -1,4 +1,4 @@
-import type { MtfLevelAnalysis, PriceZone, Side, TimeframeBundle } from "./types.ts";
+import type { MtfLevelAnalysis, PriceZone, TimeframeBundle } from "./types.ts";
 import { closedCandles, wilderAtr } from "./math.ts";
 import {
   analyzeLevelFlow as analyzeBaseline,
