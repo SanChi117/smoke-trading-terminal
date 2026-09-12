@@ -17,6 +17,9 @@ test("worker proxy is GET-only and restricted to public market data", () => {
   assert.match(workerSource, /"\/fapi\/v1\/klines"/);
   assert.match(workerSource, /"\/fapi\/v1\/ticker\/24hr"/);
   assert.match(workerSource, /Unsupported public market-data endpoint/);
+  assert.match(workerSource, /data-api\.binance\.vision/);
+  assert.match(workerSource, /BINANCE_SPOT_FALLBACK/);
+  assert.match(workerSource, /stale-while-revalidate=12/);
   assert.doesNotMatch(workerSource, /\/fapi\/v1\/(order|account|positionRisk|listenKey)/);
   assert.doesNotMatch(workerSource, /apiKey|secretKey|X-MBX-APIKEY/i);
 });

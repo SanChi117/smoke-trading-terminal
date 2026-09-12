@@ -33,4 +33,5 @@ test("chart exposes strategy overlays and required attribution", () => {
   assert.match(chart, /analysis\.stop/);
   assert.match(chart, /analysis\.target/);
   assert.match(chart, /Charts by TradingView/);
+  assert.match(chart, /sort\(\(left, right\) => left\.time - right\.time\)/);
 });

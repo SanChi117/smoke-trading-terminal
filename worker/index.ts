@@ -19,7 +19,8 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-const BINANCE_ORIGIN = "https://fapi.binance.com";
+const BINANCE_FUTURES_ORIGIN = "https://fapi.binance.com";
+const BINANCE_SPOT_MARKET_DATA_ORIGIN = "https://data-api.binance.vision";
 const BINANCE_PROXY_PREFIX = "/api/binance";
 const ALLOWED_BINANCE_PATHS = new Set([
   "/fapi/v1/klines",
@@ -41,13 +42,17 @@ function validInteger(value: string | null): boolean {
   return value === null || /^\d+$/.test(value);
 }
 
-function buildBinanceUpstream(url: URL): URL | Response {
+type BinanceRequest = Readonly<{ futures: URL; spotFallback: URL }>;
+
+function buildBinanceUpstream(url: URL): BinanceRequest | Response {
   const upstreamPath = url.pathname.slice(BINANCE_PROXY_PREFIX.length);
   if (!ALLOWED_BINANCE_PATHS.has(upstreamPath)) {
     return jsonError("Unsupported public market-data endpoint", 404);
   }
 
-  const upstream = new URL(upstreamPath, BINANCE_ORIGIN);
+  const futures = new URL(upstreamPath, BINANCE_FUTURES_ORIGIN);
+  const spotPath = upstreamPath === "/fapi/v1/klines" ? "/api/v3/klines" : "/api/v3/ticker/24hr";
+  const spotFallback = new URL(spotPath, BINANCE_SPOT_MARKET_DATA_ORIGIN);
   if (upstreamPath === "/fapi/v1/klines") {
     const symbol = (url.searchParams.get("symbol") ?? "").toUpperCase();
     const interval = url.searchParams.get("interval") ?? "";
@@ -63,14 +68,42 @@ function buildBinanceUpstream(url: URL): URL | Response {
     }
     if (!validInteger(startTime) || !validInteger(endTime)) return jsonError("Invalid time range", 400);
 
-    upstream.searchParams.set("symbol", symbol);
-    upstream.searchParams.set("interval", interval);
-    upstream.searchParams.set("limit", String(limit));
-    if (startTime) upstream.searchParams.set("startTime", startTime);
-    if (endTime) upstream.searchParams.set("endTime", endTime);
+    for (const upstream of [futures, spotFallback]) {
+      upstream.searchParams.set("symbol", symbol);
+      upstream.searchParams.set("interval", interval);
+      upstream.searchParams.set("limit", String(limit));
+      if (startTime) upstream.searchParams.set("startTime", startTime);
+      if (endTime) upstream.searchParams.set("endTime", endTime);
+    }
   }
 
-  return upstream;
+  return { futures, spotFallback };
+}
+
+async function fetchPublicMarketData(url: URL): Promise<Response | null> {
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { accept: "application/json", "user-agent": "SMOKE-Trading-OS/1.0" },
+      redirect: "follow",
+    });
+    return response.ok ? response : null;
+  } catch {
+    return null;
+  }
+}
+
+function marketDataResponse(upstream: Response, source: "BINANCE_USDS_M" | "BINANCE_SPOT_FALLBACK"): Response {
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: {
+      "content-type": upstream.headers.get("content-type") ?? "application/json; charset=utf-8",
+      "cache-control": "public, max-age=3, s-maxage=3, stale-while-revalidate=12",
+      "x-content-type-options": "nosniff",
+      "x-smoke-market-source": source,
+      "access-control-expose-headers": "x-smoke-market-source",
+    },
+  });
 }
 
 async function proxyBinanceMarketData(request: Request): Promise<Response> {
@@ -78,23 +111,16 @@ async function proxyBinanceMarketData(request: Request): Promise<Response> {
   const result = buildBinanceUpstream(new URL(request.url));
   if (result instanceof Response) return result;
 
-  try {
-    const upstreamResponse = await fetch(result, {
-      method: "GET",
-      headers: { accept: "application/json" },
-      redirect: "error",
-    });
-    const headers = new Headers({
-      "content-type": upstreamResponse.headers.get("content-type") ?? "application/json; charset=utf-8",
-      "cache-control": upstreamResponse.ok ? "public, max-age=3, s-maxage=3" : "no-store",
-      "x-content-type-options": "nosniff",
-    });
-    const retryAfter = upstreamResponse.headers.get("retry-after");
-    if (retryAfter) headers.set("retry-after", retryAfter);
-    return new Response(upstreamResponse.body, { status: upstreamResponse.status, headers });
-  } catch {
-    return jsonError("Binance market-data upstream unavailable", 502);
-  }
+  const futures = await fetchPublicMarketData(result.futures);
+  if (futures) return marketDataResponse(futures, "BINANCE_USDS_M");
+
+  // Futures can reject some data-centre regions. Binance's official
+  // market-data-only Spot endpoint keeps public charts operational until
+  // the dedicated VPS Futures gateway is configured.
+  const spotFallback = await fetchPublicMarketData(result.spotFallback);
+  if (spotFallback) return marketDataResponse(spotFallback, "BINANCE_SPOT_FALLBACK");
+
+  return jsonError("Binance market-data upstream unavailable", 502);
 }
 
 // Image security config. SVG sources with .svg extension auto-skip the

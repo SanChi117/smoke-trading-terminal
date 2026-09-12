@@ -151,11 +151,29 @@ export function subscribeKline(
   let disposed = false;
   let socket: WebSocket | null = null;
   let retry: ReturnType<typeof setTimeout> | null = null;
+  let poll: ReturnType<typeof setInterval> | null = null;
+  const stopPolling = () => {
+    if (poll) clearInterval(poll);
+    poll = null;
+  };
+  const startPolling = () => {
+    if (poll || disposed) return;
+    const refresh = async () => {
+      try {
+        const latest = (await fetchKlines(symbol, timeframe, { limit: 2 })).at(-1);
+        if (latest && !disposed) onCandle(latest, false);
+      } catch {
+        if (!disposed) onState?.("offline");
+      }
+    };
+    void refresh();
+    poll = setInterval(() => void refresh(), 5_000);
+  };
   const connect = () => {
     if (disposed) return;
     onState?.(socket ? "reconnecting" : "connecting");
     socket = new WebSocket(`${WS}/${symbol.toLowerCase()}@kline_${INTERVALS[timeframe]}`);
-    socket.onopen = () => onState?.("live");
+    socket.onopen = () => { stopPolling(); onState?.("live"); };
     socket.onmessage = (event) => {
       try {
         const payload = JSON.parse(String(event.data)) as { k?: Record<string, string | number | boolean> };
@@ -176,6 +194,7 @@ export function subscribeKline(
     socket.onclose = () => {
       if (!disposed) {
         onState?.("reconnecting");
+        startPolling();
         retry = setTimeout(connect, 1800);
       }
     };
@@ -185,6 +204,7 @@ export function subscribeKline(
   return () => {
     disposed = true;
     if (retry) clearTimeout(retry);
+    stopPolling();
     socket?.close();
   };
 }

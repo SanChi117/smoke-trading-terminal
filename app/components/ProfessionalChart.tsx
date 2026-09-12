@@ -79,7 +79,7 @@ export default function ProfessionalChart({ symbol, timeframe, candles, analysis
 
   useEffect(() => {
     if (!markerRef.current) return;
-    markerRef.current.setMarkers(indicators.events ? journal.slice(0, 100).filter((event) => candles.some((candle) => candle.time === event.time)).map((event) => ({ time: asTime(event.time), position: event.status === "cancelled" ? "aboveBar" as const : "belowBar" as const, color: event.status === "cancelled" ? "#ff6476" : "#55ddb0", shape: event.status === "cancelled" ? "arrowDown" as const : "arrowUp" as const, text: event.status.toUpperCase() })) : []);
+    markerRef.current.setMarkers(indicators.events ? journal.slice(0, 100).filter((event) => candles.some((candle) => candle.time === event.time)).sort((left, right) => left.time - right.time).map((event) => ({ time: asTime(event.time), position: event.status === "cancelled" ? "aboveBar" as const : "belowBar" as const, color: event.status === "cancelled" ? "#ff6476" : "#55ddb0", shape: event.status === "cancelled" ? "arrowDown" as const : "arrowUp" as const, text: event.status.toUpperCase() })) : []);
   }, [candles, indicators.events, journal, ready]);
 
   useEffect(() => {
