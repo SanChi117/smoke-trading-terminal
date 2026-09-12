@@ -37,10 +37,10 @@ Executed before structural changes on 2026-09-12:
 | Domain contracts | IN PROGRESS | New modules are adapters around existing behavior, not strategy rewrites |
 | Professional chart | IN PROGRESS | Lightweight Charts 5.2.1 is now the primary engine; legacy drawings remain available during parity migration |
 | Market data facade | PLANNED | Existing Binance client will become the first adapter |
-| Unified ledger | PLANNED | D1/SQLite-compatible schema first, PostgreSQL target documented |
-| Brains / conflicts | IN PROGRESS | Frozen V5/QFVG remain legacy signal adapters |
-| AI arbiter | PLANNED | Server-side only, schema validated, NO_TRADE fallback |
-| Execution / Guardian | PLANNED | Disabled by default until credentials and explicit AUTO permission exist |
+| Unified ledger | IN PROGRESS | D1/SQLite migration contains market, decision, plan, order/fill, position and system-event domains |
+| Brains / conflicts | IN PROGRESS | Macro/Pump/Trend/Range/Reversal/Catalyst contracts added as challengers; frozen V5/QFVG remain unchanged |
+| AI arbiter | IN PROGRESS | Structured validator, bounded retry and deterministic fallback implemented; external API adapter pending |
+| Execution / Guardian | IN PROGRESS | Observe/live permission boundary, deterministic IDs, $1 sizing and Guardian state machine implemented; Binance private adapter pending |
 | Telegram / observability | PLANNED | Non-critical integration |
 
 ## Safety invariants
