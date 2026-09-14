@@ -25,5 +25,13 @@ jobs:
           node-version: "22.13.0"
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - run: npm test
+      - name: Preserve verified build
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-verified-${{ github.sha }}
+          path: dist/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: error
 
