@@ -1,6 +1,6 @@
 import type { Candle, Timeframe, TimeframeBundle } from "./mtf-level-strategy";
 
-import { DIRECT_REST, fetchFuturesPublic } from "./binance-public-transport";
+import { DIRECT_REST, fetchFuturesPublic } from "./binance-public-transport.ts";
 const WS = "wss://fstream.binance.com/ws";
 export const INTERVALS: Record<Timeframe, string> = {
   "1w": "1w",

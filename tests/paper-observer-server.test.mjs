@@ -5,10 +5,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-async function waitFor(url, timeoutMs = 10_000) {
+async function waitFor(url, child, diagnostics, timeoutMs = 10_000) {
   const started = Date.now();
   let lastError = null;
   while (Date.now() - started < timeoutMs) {
+    if (child.exitCode !== null || child.signalCode !== null) throw new Error(`Paper observer exited before readiness: ${diagnostics()}`);
     try {
       const response = await fetch(url, { cache: "no-store" });
       if (response.ok) return response;
@@ -18,7 +19,7 @@ async function waitFor(url, timeoutMs = 10_000) {
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw lastError ?? new Error("paper observer did not start");
+  throw new Error(`Paper observer did not start: ${diagnostics()}`, { cause: lastError });
 }
 
 test("paper observer exposes read-only health and status endpoints", async () => {
@@ -35,8 +36,11 @@ test("paper observer exposes read-only health and status endpoints", async () =>
     stdio: ["ignore", "pipe", "pipe"],
   });
 
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-8000); });
+  child.stdout.resume();
   try {
-    const healthResponse = await waitFor(`http://127.0.0.1:${port}/health`);
+    const healthResponse = await waitFor(`http://127.0.0.1:${port}/health`, child, () => stderr);
     const health = await healthResponse.json();
     assert.equal(health.ok, true);
     assert.equal(health.mode, "PAPER_ONLY");
@@ -52,9 +56,9 @@ test("paper observer exposes read-only health and status endpoints", async () =>
     assert.equal(postResponse.status, 405);
   } finally {
     child.kill("SIGTERM");
-    await new Promise((resolve) => {
-      child.once("exit", resolve);
-      setTimeout(resolve, 3_000);
+    if (child.exitCode === null && child.signalCode === null) await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 3_000);
+      child.once("exit", () => { clearTimeout(timer); resolve(); });
     });
     await fs.rm(directory, { recursive: true, force: true });
   }
