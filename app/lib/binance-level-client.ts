@@ -1,7 +1,6 @@
 import type { Candle, Timeframe, TimeframeBundle } from "./mtf-level-strategy";
 
-const DIRECT_REST = "https://fapi.binance.com";
-const BROWSER_REST = "/api/binance";
+import { DIRECT_REST, fetchFuturesPublic } from "./binance-public-transport";
 const WS = "wss://fstream.binance.com/ws";
 export const INTERVALS: Record<Timeframe, string> = {
   "1w": "1w",
@@ -19,7 +18,7 @@ const INTERVAL_MS: Record<Timeframe, number> = {
 };
 
 export function binanceRestBase(): string {
-  return typeof window === "undefined" ? DIRECT_REST : BROWSER_REST;
+  return DIRECT_REST;
 }
 
 function parseKline(row: unknown[]): Candle {
@@ -53,9 +52,8 @@ export async function fetchKlines(
   let lastError: Error | null = null;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
-      const response = await fetch(`${binanceRestBase()}/fapi/v1/klines?${params}`, {
+      const response = await fetchFuturesPublic(`/fapi/v1/klines?${params}`, {
         signal: options.signal,
-        cache: "no-store",
       });
       if (response.ok) {
         const payload = await response.json() as unknown[][];
@@ -128,7 +126,7 @@ export type Ticker24h = {
 };
 
 export async function fetch24hTickers(symbols: string[], signal?: AbortSignal): Promise<Ticker24h[]> {
-  const response = await fetch(`${binanceRestBase()}/fapi/v1/ticker/24hr`, { signal, cache: "no-store" });
+  const response = await fetchFuturesPublic("/fapi/v1/ticker/24hr", { signal });
   if (!response.ok) throw new Error(`Binance ticker ${response.status}`);
   const wanted = new Set(symbols);
   const payload = await response.json() as Array<Record<string, string>>;

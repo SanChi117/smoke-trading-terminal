@@ -40,7 +40,7 @@ export default function ProfessionalChart({ symbol, timeframe, candles, analysis
       handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false }, handleScale: { axisPressedMouseMove: true, mouseWheel: true, pinch: true }, kineticScroll: { mouse: true, touch: true }, localization: { locale: "ru-RU" },
     });
     const candleSeries = chart.addSeries(CandlestickSeries, { upColor: "#35c992", downColor: "#eb6473", borderUpColor: "#35c992", borderDownColor: "#eb6473", wickUpColor: "#6ce7bd", wickDownColor: "#ff8995", priceFormat: { type: "price", precision: 8, minMove: 0.00000001 } });
-    const createLine = (color: string, lineWidth: 1 | 2) => chart.addSeries(LineSeries, { color, lineWidth, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false });
+    const createLine = (color: string, lineWidth: 1 | 2) => chart.addSeries(LineSeries, { color, lineWidth, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
     const volumeSeries = chart.addSeries(HistogramSeries, { priceScaleId: "volume", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
     volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
     chartRef.current = chart; candleRef.current = candleSeries;
@@ -53,7 +53,16 @@ export default function ProfessionalChart({ symbol, timeframe, candles, analysis
 
   useEffect(() => {
     const chart = chartRef.current, candleSeries = candleRef.current, series = indicatorRefs.current;
-    if (!chart || !candleSeries || !series || !candles.length) return;
+    if (!chart || !candleSeries || !series) return;
+    if (!candles.length) {
+      candleSeries.setData([]);
+      for (const line of [series.ema20, series.ema50, series.ema200, series.vwap]) line.setData([]);
+      series.volume.setData([]);
+      markerRef.current?.setMarkers([]);
+      previousRef.current = null;
+      setHovered(null);
+      return;
+    }
     const previous = previousRef.current, last = candles.at(-1)!;
     const streaming = previous?.symbol === symbol && previous.timeframe === timeframe && previous.length === candles.length && previous.lastTime === last.time;
     if (streaming) {
@@ -69,7 +78,11 @@ export default function ProfessionalChart({ symbol, timeframe, candles, analysis
     }
     const changedInstrument = !previous || previous.symbol !== symbol || previous.timeframe !== timeframe;
     previousRef.current = { symbol, timeframe, length: candles.length, lastTime: last.time };
-    if (changedInstrument) chart.timeScale().fitContent();
+    if (changedInstrument) {
+      setHovered(null);
+      chart.priceScale("right").applyOptions({ autoScale: true, invertScale: false });
+      chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, candles.length - 120), to: candles.length + 8 });
+    }
   }, [calculations, candles, ready, symbol, timeframe]);
 
   useEffect(() => {
@@ -92,5 +105,5 @@ export default function ProfessionalChart({ symbol, timeframe, candles, analysis
 
   if (legacy) return <div className={chartStyles.professionalChart}><div className={chartStyles.chartModeBar}><b>Режим рисунков</b><button onClick={() => setLegacy(false)}>Вернуться в PRO</button></div><LegacyChart symbol={symbol} timeframe={timeframe} candles={candles} analysis={analysis} journal={journal} loading={loading}/></div>;
   const latest = hovered ?? candles.at(-1) ?? null;
-  return <section className={chartStyles.professionalChart} aria-label={`${symbol} professional candlestick chart`}><div className={chartStyles.chartModeBar}><div className={chartStyles.chartLegend}><b>{symbol} · {timeframe}</b>{latest && <span>O {fmt(latest.open)} H {fmt(latest.high)} L {fmt(latest.low)} C {fmt(latest.close)} V {latest.volume.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>}</div><div className={chartStyles.chartActions}>{(Object.keys(indicators) as Indicator[]).map((key) => <button key={key} className={indicators[key] ? styles.on : ""} onClick={() => setIndicators((current) => ({ ...current, [key]: !current[key] }))}>{key.toUpperCase()}</button>)}<button onClick={() => chartRef.current?.timeScale().fitContent()}>По размеру</button><button onClick={() => chartRef.current?.timeScale().scrollToRealTime()}>Сейчас</button><button onClick={() => hostRef.current?.parentElement?.requestFullscreen?.()}>На весь экран</button><button onClick={() => setLegacy(true)}>Рисовать</button></div></div><div ref={hostRef} className={chartStyles.chartCanvas}/>{!candles.length && <div className={chartStyles.chartLoading}>{loading ? "Загрузка Binance Futures…" : "Нет свечей"}</div>}<footer className={chartStyles.chartAttribution}>Колесо — масштаб · drag — прокрутка · шкала цены — вертикальный масштаб · <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charts by TradingView</a></footer></section>;
+  return <section className={chartStyles.professionalChart} aria-label={`${symbol} professional candlestick chart`}><div className={chartStyles.chartModeBar}><div className={chartStyles.chartLegend}><b>{symbol} · USDⓈ-M Futures · {timeframe} · UTC</b>{latest && <span>O {fmt(latest.open)} H {fmt(latest.high)} L {fmt(latest.low)} C {fmt(latest.close)} V {latest.volume.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>}</div><div className={chartStyles.chartActions}>{(Object.keys(indicators) as Indicator[]).map((key) => <button key={key} className={indicators[key] ? styles.on : ""} onClick={() => setIndicators((current) => ({ ...current, [key]: !current[key] }))}>{key.toUpperCase()}</button>)}<button onClick={() => chartRef.current?.timeScale().fitContent()}>По размеру</button><button onClick={() => chartRef.current?.timeScale().scrollToRealTime()}>Сейчас</button><button onClick={() => hostRef.current?.parentElement?.requestFullscreen?.()}>На весь экран</button><button onClick={() => setLegacy(true)}>Рисовать</button></div></div><div ref={hostRef} className={chartStyles.chartCanvas}/>{!candles.length && <div className={chartStyles.chartLoading}>{loading ? "Загрузка Binance Futures…" : "Нет свечей"}</div>}<footer className={chartStyles.chartAttribution}>Колесо — масштаб · drag — прокрутка · шкала цены — вертикальный масштаб · <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charts by TradingView</a></footer></section>;
 }
