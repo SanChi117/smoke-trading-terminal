@@ -9,6 +9,23 @@
 - Rollback tag: `smoke-os-pre-refactor-f808b01`
 - Current phase: Phase 1 — professional UI and chart foundation
 
+## Verified checkpoint — 2026-09-14
+
+Implementation commit: `d57f019ff51e0a802e1535d47253ed3ec2785938`.
+[CI run and downloadable build](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/34867369384): build PASS, JavaScript 70/70 PASS, Python job PASS.
+
+- Browser candle/ticker reads try the direct USD-M Futures endpoint, with an explicitly verified same-origin Futures response as a network/server-error fallback.
+- Spot substitution removed from the Worker. Access denial and rate limits do not switch routes. Public requests have bounded timeouts and cancellation.
+- Chart opens on the last 120 candles; indicators do not expand candle autoscaling. Empty data clears old series. Legend identifies Futures and UTC.
+- CI now runs the full JavaScript suite and preserves the compiled `dist/` artifact for 14 days.
+- Paper observer imports remain compatible with Node type stripping. Startup failures now expose diagnostics in its integration test.
+
+**Release status: source and CI verified; these changes have not been published to the existing Site. No live browser comparison with Binance has been performed for this commit.**
+
+**Specification status: incomplete.** Existing contracts/state machines are not proof of connected end-to-end services. Remaining acceptance includes chart/drawing parity, durable ledger integration, market-data health/freshness, server integration of brains/AI/Guardian/execution, configured external adapters, and deployed end-to-end checks. Private exchange execution remains disabled.
+
+The current session can change GitHub source and run CI, but cannot read the local Site checkout or uploaded master-spec files. The complete original specification must be accessible before claiming clause-by-clause acceptance. AppDeploy was discovered as an alternative build/deployment integration; installation and connection are not confirmed.
+
 ## Baseline verification
 
 Executed before structural changes on 2026-09-12:
@@ -54,4 +71,4 @@ Executed before structural changes on 2026-09-12:
 
 ## Next checkpoint
 
-Complete Phase 0 inventory/ADRs and core contract tests, then replace the chart foundation without removing scanner, backtest, paper journal or V5/QFVG behavior.
+Make the original master specification accessible, reconcile it against implemented modules, complete server wiring and chart parity, then deploy and verify actual application behavior. Use the verified GitHub build as a source checkpoint; do not mark the specification complete from unit tests alone.
