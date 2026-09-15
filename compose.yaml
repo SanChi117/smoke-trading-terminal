@@ -1,0 +1,46 @@
+services:
+  terminal:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/os/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: smoke
+      POSTGRES_USER: smoke
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: ["smoke_pg:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smoke -d smoke"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  migrate:
+    image: postgres:17-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: ["./db/postgres:/migrations:ro"]
+    entrypoint: ["/bin/sh", "-c", "psql -h postgres -U smoke -d smoke -v ON_ERROR_STOP=1 -f /migrations/0001_smoke_os.sql"]
+    depends_on:
+      postgres: {condition: service_healthy}
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: ["./backups:/backups", "./scripts:/scripts:ro"]
+    entrypoint: ["/bin/sh", "-c", "while true; do /scripts/backup-postgres.sh; sleep 86400; done"]
+    depends_on: [postgres]
+volumes:
+  smoke_pg:

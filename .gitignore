@@ -48,3 +48,6 @@ __pycache__/
 runtime/
 .coverage
 .mypy_cache/
+
+# Reproducible AppDeploy output
+.appdeploy-release/
