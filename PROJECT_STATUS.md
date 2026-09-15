@@ -10,7 +10,7 @@ AppDeploy: https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/ — published 
 
 - Professional chart: expanded intervals, drawings and indicator parity; preserve and test history focus and persistence.
 - Data: source/health per symbol, derivative/flow streaming, reconnect/resync and exchange filters.
-- Runtime: wire macro/brains/conflicts/AI/plan/execution/Guardian into a persistent orchestrator and UI. Existing adapters alone do not satisfy this.
+- Runtime: session-persistent browser orchestrator now wires the live Binance snapshot through Macro, four specialist brains, conflict detection, deterministic schema-safe arbiter fallback, immutable PAPER plan compilation, causal event bus, market memory, SAFE MODE and Guardian state. Network AI and exchange execution remain deliberately gated.
 - Ledger: actual durable writes/queries and backup/restore, not only migrations.
 - Exchange: idempotent submit/reconcile/partial-fill/stop protection and independent Manual/AUTO accounts; no real orders authorized during development.
 - Telegram: connect durable outbox and authenticated commands; mock integration before secrets.
@@ -23,6 +23,6 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - AppDeploy application: `smoke-trading-terminal-0kl792`, snapshot `1789490095006`. Deployment ready; frontend/backend error arrays empty. Platform e2e results were not returned.
 - Canonical source generates the portable release with `node scripts/prepare-appdeploy.mjs`; no separate strategy fork.
 - Added 1m–1M chart intervals, real Futures OI/funding context, tick-size price formatting, non-overlapping controls, scanner search/sort/favorites/workspaces, historical backtest candles with Entry/SL/TP, journal clear confirmation and restoration guards.
-- Full build/test: 81 passing tests before one additional passing stream regression (13/13 focused data tests). Python: 6 passing plus safety validator. Lint: no errors (template warnings subsequently corrected).
+- Added a session-persistent runtime chain in the terminal UI: snapshot → Macro → Pump/Trend/Range/Reversal → conflict map → deterministic arbiter fallback → immutable paper plan → SAFE MODE/Guardian events. Full build/test: 83 passing tests. Python: 6 passing plus safety validator. Lint: no errors.
 - Main publication was rejected by automatic approval review because pushing the merged commit changes the default branch and deployment state. Changes remain locally committed; review branch publication is a safer alternative. Do not bypass the main rejection.
 - Full Trading OS specification remains incomplete; see remaining acceptance above. Do not enable live execution or label disconnected runtime modules ready.

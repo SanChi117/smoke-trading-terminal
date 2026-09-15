@@ -8,6 +8,7 @@ import { ResponsesArbiterClient } from "../integrations/openai/responses-arbiter
 import { BinanceAutoGateway } from "../integrations/binance/auto-gateway.ts";
 import { compareGuardianWithControl } from "../research/replay/guardian-comparison.ts";
 import { assertAutoIsolation } from "../core/portfolio/isolation.ts";
+import { TradingOSOrchestrator } from "../services/orchestrator/trading-os.ts";
 
 test("technical faults enter SAFE MODE while preserving position protection", () => {
   const state = evaluateSafety([{ code: "STALE_MARKET", healthy: false, blocking: true, detail: "no heartbeat" }]);
@@ -51,4 +52,27 @@ test("Binance adapter signs namespaced order without exposing secret", async () 
 test("Guardian replay reports conservative intrabar ambiguity", () => {
   const result = compareGuardianWithControl([{ time: 1, price: 100, high: 106, low: 97, dataHealthy: true, fastFlush: false, fastReclaim: false, sellerAcceptance: false, failedRebound: false, expansion: true }], "LONG", 100, 98);
   assert.equal(result.control3RHit, true); assert.equal(result.ambiguity, true); assert.equal(result.maxFavorableR, 3);
+});
+
+test("runtime orchestrator wires brains, conflicts, arbiter, plan and causal events", () => {
+  const orchestrator = new TradingOSOrchestrator();
+  const analysis = {
+    version: "SMOKE_LEVEL_FLOW_V1", evaluatedAt: 1, symbol: "BTCUSDT", bias: "up", weeklyBias: "up", dailyBias: "up", trendStrength: "strong",
+    range: { low: 90, high: 110, equilibrium: 100, position: "discount" }, side: "long", state: "ready", confidence: 84,
+    setupModel: "continuation", modelDetail: "CONTINUATION", qualitySegment: null, activeZone: null, targetZone: null, zones: [], structure: [],
+    route4h: { bias: "up", state: "inside", distanceAtr: 0.2, distanceDecreasing: true, detail: "inside" },
+    metrics: { dailyEma50: 100, dailyEma200: 90, fourHourEma50: 100, fourHourEma200: 95, fourHourRsi14: 60, fifteenMinuteRsi14: 58, reactionVolumeRatio: 2 },
+    reaction: { confirmed: true, side: "long", type: "displacement", score: 80, time: 1, triggerPrice: 100, sweepPrice: null, detail: "accepted" },
+    entry: 100, stop: 98, target: 106, rr: 3, reason: "accepted continuation", blockers: [], trace: [],
+  };
+  const result = orchestrator.evaluate({ analysis, derivatives: null, feedHealth: { status: "FRESH", source: "BINANCE_USDS_M", receivedAt: 1, latencyMs: 12 } });
+  assert.equal(result.opinions.length, 4);
+  assert.equal(result.arbiter.decision, "TRADE");
+  assert.equal(result.plan?.marginCapUsdt, 1);
+  assert.equal(result.safety.mode, "SAFE_MODE");
+  assert.ok(result.events.some((event) => event.type === "BRAIN_OPINION"));
+  assert.ok(result.events.some((event) => event.type === "AI_DECISION"));
+  const next = orchestrator.evaluate({ analysis: { ...analysis, state: "watch" }, derivatives: null, feedHealth: { status: "FRESH", source: "BINANCE_WS", receivedAt: 2, latencyMs: 0 } });
+  assert.ok(next.events.length > result.events.length);
+  assert.equal(next.arbiter.decision, "WATCH");
 });
