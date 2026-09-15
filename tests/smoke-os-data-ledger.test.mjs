@@ -28,6 +28,14 @@ test("D1 schema contains the causal ledger and execution audit domains", () => {
   assert.equal(hosting.d1, "DB");
 });
 
+test("server ledger route is fail-closed without D1 and idempotent at the store boundary", () => {
+  const route = readFileSync(new URL("../app/api/os/ledger/route.ts", import.meta.url), "utf8");
+  const store = readFileSync(new URL("../core/ledger/store.ts", import.meta.url), "utf8");
+  assert.match(route, /D1_BINDING_UNAVAILABLE/);
+  assert.match(route, /slice\(-500\)/);
+  assert.match(store, /INSERT OR IGNORE INTO system_events/);
+});
+
 test("generated migration has bounded schema-only statements and required indexes", () => {
   const migration = readFileSync(new URL("../drizzle/0000_married_winter_soldier.sql", import.meta.url), "utf8");
   assert.doesNotMatch(migration, /INSERT\s+INTO/i);

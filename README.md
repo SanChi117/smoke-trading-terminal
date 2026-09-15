@@ -2,7 +2,7 @@
 
 Read-only Binance Futures terminal, multi-timeframe level strategy, browser backtest and local paper workflow.
 
-> Research and paper trading only. The repository contains no exchange-account client, API keys, withdrawal methods, or live-order execution.
+> Research and paper trading only by default. The repository contains no credentials or withdrawal methods; the exchange adapter is fail-closed and cannot submit live orders unless a separately reviewed AUTO policy is configured.
 
 ## Current experimental strategy
 
@@ -38,6 +38,8 @@ V5 remains frozen for research. Expanded walk-forward validation produced strong
 - browser backtest with next-open execution and SL-first ambiguity resolution;
 - local paper journal with decision snapshots and complete trace;
 - automatic paper outcomes: pending, take-profit, stop-loss, cancelled and expired;
+- causal runtime ledger that persists market/brain/conflict/arbiter/paper-plan events locally across reloads, with JSON backup/restore;
+- optional fail-closed D1 ledger API for server-side event persistence when the `DB` binding is present;
 - CSV and JSON export;
 - automatic paper-review readiness gate.
 

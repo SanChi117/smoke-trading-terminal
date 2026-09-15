@@ -1,74 +1,28 @@
-# SMOKE Trading OS — Project Status
+# SMOKE Trading OS — verified project status
 
-## Current checkpoint
+## 2026-09-15 integration checkpoint
 
-- Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
-- Canonical repository: `SanChi117/smoke-trading-terminal`
-- Canonical branch: `main`
-- Starting SHA: `f808b01522a4eb72afec9c83595b208e42a6f39f`
-- Rollback tag: `smoke-os-pre-refactor-f808b01`
-- Current phase: Phase 1 — professional UI and chart foundation
+The complete master specification is accessible again. GitHub main at resume: `305762d713bc36975b8c465546e4c826f281cfc5`. Three recovered local commits (`67380d2`, `9c0179d`, `06813f4`) are being merged with current main. Their previous claim that phases 0–8 were complete was incorrect. Module scaffolds are not end-to-end integration.
 
-## Verified checkpoint — 2026-09-14
+AppDeploy: https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/ — published portable interface. Real BTC Futures candles and strategy output were observed in browser on 2026-09-15. AppDeploy returned ready with no runtime errors; it did not return a completed e2e suite.
 
-Implementation commit: `d57f019ff51e0a802e1535d47253ed3ec2785938`.
-[CI run and downloadable build](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/34867369384): build PASS, JavaScript 70/70 PASS, Python job PASS.
+## Remaining acceptance
 
-- Browser candle/ticker reads try the direct USD-M Futures endpoint, with an explicitly verified same-origin Futures response as a network/server-error fallback.
-- Spot substitution removed from the Worker. Access denial and rate limits do not switch routes. Public requests have bounded timeouts and cancellation.
-- Chart opens on the last 120 candles; indicators do not expand candle autoscaling. Empty data clears old series. Legend identifies Futures and UTC.
-- CI now runs the full JavaScript suite and preserves the compiled `dist/` artifact for 14 days.
-- Paper observer imports remain compatible with Node type stripping. Startup failures now expose diagnostics in its integration test.
+- Professional chart: expanded intervals, drawings and indicator parity; preserve and test history focus and persistence.
+- Data: source/health per symbol, derivative/flow streaming, reconnect/resync and exchange filters.
+- Runtime: session-persistent browser orchestrator now wires the live Binance snapshot through Macro, four specialist brains, conflict detection, deterministic schema-safe arbiter fallback, immutable PAPER plan compilation, causal event bus, market memory, SAFE MODE and Guardian state. Network AI and exchange execution remain deliberately gated.
+- Ledger: browser-side causal ledger is durable across reloads with bounded storage and validated JSON export/restore; a fail-closed D1 `/api/os/ledger` route and idempotent store boundary are now implemented. Production binding/restore drill remains to be executed.
+- Exchange: idempotent submit/reconcile/partial-fill/stop protection and independent Manual/AUTO accounts; no real orders authorized during development.
+- Telegram: connect durable outbox and authenticated commands; mock integration before secrets.
+- Hardening: replay/control comparisons, integration and browser tests, VPS deployment verification.
 
-**Release status: source and CI verified; these changes have not been published to the existing Site. No live browser comparison with Binance has been performed for this commit.**
+V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specification completion or that only secrets remain.
 
-**Specification status: incomplete.** Existing contracts/state machines are not proof of connected end-to-end services. Remaining acceptance includes chart/drawing parity, durable ledger integration, market-data health/freshness, server integration of brains/AI/Guardian/execution, configured external adapters, and deployed end-to-end checks. Private exchange execution remains disabled.
+## Portable release checkpoint
 
-The current session can change GitHub source and run CI, but cannot read the local Site checkout or uploaded master-spec files. The complete original specification must be accessible before claiming clause-by-clause acceptance. AppDeploy was discovered as an alternative build/deployment integration; installation and connection are not confirmed.
-
-## Baseline verification
-
-Executed before structural changes on 2026-09-12:
-
-- `npm test`: PASS — 42 tests
-- `npm run test:python`: PASS — 6 tests plus terminal safety validator
-- `npm run lint`: PASS with 2 pre-existing warnings
-- `npm run build`: PASS (included in `npm test`)
-
-## Existing capabilities retained
-
-- Public Binance USD-M Futures candles and ticker data
-- MTF Level Flow V5 and QFVG_FS15 candidate logic
-- Interactive custom chart and local drawings
-- 19-symbol scanner
-- Browser backtest
-- Local paper journal and observer
-- Python research, replay and validation utilities
-- Cloudflare/Vinext deployment skeleton
-
-## Migration state
-
-| Area | Status | Notes |
-| --- | --- | --- |
-| Audit / rollback | COMPLETE | Starting SHA and remote rollback branch recorded |
-| Domain contracts | IN PROGRESS | New modules are adapters around existing behavior, not strategy rewrites |
-| Professional chart | IN PROGRESS | Lightweight Charts 5.2.1 is now the primary engine; legacy drawings remain available during parity migration |
-| Market data facade | PLANNED | Existing Binance client will become the first adapter |
-| Unified ledger | IN PROGRESS | D1/SQLite migration contains market, decision, plan, order/fill, position and system-event domains |
-| Brains / conflicts | IN PROGRESS | Macro/Pump/Trend/Range/Reversal/Catalyst contracts added as challengers; frozen V5/QFVG remain unchanged |
-| AI arbiter | IN PROGRESS | Structured validator, bounded retry and deterministic fallback implemented; external API adapter pending |
-| Execution / Guardian | IN PROGRESS | Observe/live permission boundary, deterministic IDs, $1 sizing and Guardian state machine implemented; Binance private adapter pending |
-| Telegram / observability | PLANNED | Non-critical integration |
-
-## Safety invariants
-
-- No secret is stored in Git, browser storage or client bundle.
-- AUTO never owns or mutates a manual order or position.
-- Live submission stays disabled unless server-side permissions and account isolation are valid.
-- Observation policy margin cap is enforced by deterministic code at 1.00 USDT per new AUTO trade.
-- V5/QFVG production-candidate logic is not silently modified; proposed changes are challengers.
-- Every material decision and state transition receives stable decision/correlation identifiers.
-
-## Next checkpoint
-
-Make the original master specification accessible, reconcile it against implemented modules, complete server wiring and chart parity, then deploy and verify actual application behavior. Use the verified GitHub build as a source checkpoint; do not mark the specification complete from unit tests alone.
+- AppDeploy application: `smoke-trading-terminal-0kl792`, snapshot `1789490095006`. Deployment ready; frontend/backend error arrays empty. Platform e2e results were not returned.
+- Canonical source generates the portable release with `node scripts/prepare-appdeploy.mjs`; no separate strategy fork.
+- Added 1m–1M chart intervals, real Futures OI/funding context, tick-size price formatting, non-overlapping controls, scanner search/sort/favorites/workspaces, historical backtest candles with Entry/SL/TP, journal clear confirmation and restoration guards.
+- Added a session-persistent runtime chain in the terminal UI: snapshot → Macro → Pump/Trend/Range/Reversal → conflict map → deterministic arbiter fallback → immutable paper plan → SAFE MODE/Guardian events. Added a bounded browser causal ledger with backup/restore controls, recent-event timeline, and a fail-closed D1 ledger API route. Full build/test: 85 passing tests. Python: 6 passing plus safety validator. Lint: no errors.
+- Main publication was rejected by automatic approval review because pushing the merged commit changes the default branch and deployment state. Changes remain locally committed; review branch publication is a safer alternative. Do not bypass the main rejection.
+- Full Trading OS specification remains incomplete; see remaining acceptance above. Do not enable live execution or label disconnected runtime modules ready.
