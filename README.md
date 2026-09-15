@@ -38,6 +38,7 @@ V5 remains frozen for research. Expanded walk-forward validation produced strong
 - browser backtest with next-open execution and SL-first ambiguity resolution;
 - local paper journal with decision snapshots and complete trace;
 - automatic paper outcomes: pending, take-profit, stop-loss, cancelled and expired;
+- causal runtime ledger that persists market/brain/conflict/arbiter/paper-plan events locally across reloads, with JSON backup/restore;
 - CSV and JSON export;
 - automatic paper-review readiness gate.
 
