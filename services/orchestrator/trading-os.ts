@@ -10,6 +10,7 @@ import type { BrainFeatureSnapshot } from "../../core/contracts/features.ts";
 import type { BrainOpinion } from "../../core/contracts/brain.ts";
 import { detectConflicts, type PortfolioContext } from "../../core/conflicts/engine.ts";
 import { compileTradePlan, type TradePlan } from "../../core/contracts/trade-plan.ts";
+import type { CausalLedger } from "../../core/ledger/browser.ts";
 import { TradingEventBus, type TradingEvent } from "../../core/state/event-bus.ts";
 import { MarketMemory } from "../../core/state/market-memory.ts";
 import { nextGuardianState, type GuardianState } from "../../services/exit-guardian/state-machine.ts";
@@ -143,8 +144,19 @@ function compileObservedPlan(input: TradingOSRuntimeInput, decision: ArbiterDeci
 export class TradingOSOrchestrator {
   readonly #bus = new TradingEventBus();
   readonly #memory = new MarketMemory();
-  readonly #events: TradingEvent[] = [];
+  readonly #ledger: CausalLedger | null;
+  #events: TradingEvent[];
   #sequence = 0;
+
+  constructor(ledger: CausalLedger | null = null) {
+    this.#ledger = ledger;
+    this.#events = ledger ? [...ledger.events()] : [];
+  }
+
+  /** Refresh the in-memory event cursor after a user restores a ledger backup. */
+  refreshFromLedger(): void {
+    if (this.#ledger) this.#events = [...this.#ledger.events()];
+  }
 
   evaluate(input: TradingOSRuntimeInput): TradingOSRuntimeEvaluation {
     const now = Date.now();
@@ -153,6 +165,7 @@ export class TradingOSOrchestrator {
     const emit = (type: TradingEvent["type"], payload: unknown, decisionId?: string) => {
       const event = Object.freeze({ eventId: `${correlationId}-${this.#sequence++}`, correlationId, decisionId, type, occurredAt: now, payload });
       this.#events.push(event);
+      this.#ledger?.append(event);
       this.#bus.publish(event);
       return event;
     };
@@ -184,6 +197,7 @@ export class TradingOSOrchestrator {
       failedRebound: input.analysis.state === "blocked",
       expansion: input.analysis.setupModel === "continuation",
     });
+    this.#ledger?.recordEvaluation({ correlationId, symbol: snapshot.symbol, capturedAt: now, snapshot, macro, opinions, conflicts, arbiter, plan, safety, guardian });
     return Object.freeze({ correlationId, snapshot, macro, opinions, conflicts, arbiter, plan, safety, guardian, events: Object.freeze([...this.#events]), memorySize: this.#memory.snapshot(snapshot.symbol).opinions.length + this.#memory.snapshot(snapshot.symbol).market.length });
   }
 }
