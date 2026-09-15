@@ -9,7 +9,7 @@
 
 ## Causal ledger backup
 
-The OS control center keeps a bounded local causal ledger across browser reloads. It is paper/read-only state: it contains no API keys and cannot submit orders. Use **Export JSON** before clearing browser data or moving a research session, and **Restore** to validate and load that backup. A server-side D1/Postgres ledger is still required for 24/7 deployment and is not implied by the local copy.
+The OS control center keeps a bounded local causal ledger across browser reloads. It is paper/read-only state: it contains no API keys and cannot submit orders. Use **Export JSON** before clearing browser data or moving a research session, and **Restore** to validate and load that backup. The optional `/api/os/ledger` route accepts normalized causal events only when the Cloudflare `DB` binding is present and returns `503 D1_BINDING_UNAVAILABLE` otherwise; a production restore drill is still required before 24/7 deployment.
 
 ## Safety response
 
