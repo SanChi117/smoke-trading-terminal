@@ -1,5 +1,14 @@
 export const dynamic = "force-dynamic";
 
+async function hasServerDatabase(): Promise<boolean> {
+  try {
+    const worker = await import("cloudflare:workers") as { env?: { DB?: unknown } };
+    return Boolean(worker.env?.DB);
+  } catch {
+    return Boolean(process.env.DATABASE_URL || process.env.CLOUDFLARE_D1_DATABASE_ID);
+  }
+}
+
 export async function GET() {
   const openaiReady = Boolean(process.env.OPENAI_API_KEY && process.env.OPENAI_ARBITER_MODEL);
   const binanceReady = Boolean(process.env.BINANCE_AUTO_API_KEY && process.env.BINANCE_AUTO_SECRET_KEY);
@@ -8,7 +17,7 @@ export async function GET() {
   const liveRequested = process.env.SMOKE_AUTO_LIVE_ENABLED === "true";
   const accountIsolated = process.env.SMOKE_AUTO_ACCOUNT_ISOLATED === "true";
   const liveEnabled = liveRequested && binanceReady && leverageReady && accountIsolated;
-  const serverDatabaseConfigured = Boolean(process.env.DATABASE_URL || process.env.CLOUDFLARE_D1_DATABASE_ID);
+  const serverDatabaseConfigured = await hasServerDatabase();
   return Response.json({
     service: "SMOKE_TRADING_OS", mode: liveEnabled ? "AUTO_LIVE" : "AUTO_OBSERVE", safeMode: liveRequested && !liveEnabled,
     manualDesk: { isolated: true, automationCanModify: false },
