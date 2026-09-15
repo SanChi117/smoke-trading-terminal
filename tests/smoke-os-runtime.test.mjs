@@ -8,6 +8,7 @@ import { ResponsesArbiterClient } from "../integrations/openai/responses-arbiter
 import { BinanceAutoGateway } from "../integrations/binance/auto-gateway.ts";
 import { compareGuardianWithControl } from "../research/replay/guardian-comparison.ts";
 import { assertAutoIsolation } from "../core/portfolio/isolation.ts";
+import { BrowserCausalLedger } from "../core/ledger/browser.ts";
 import { TradingOSOrchestrator } from "../services/orchestrator/trading-os.ts";
 
 test("technical faults enter SAFE MODE while preserving position protection", () => {
@@ -52,6 +53,22 @@ test("Binance adapter signs namespaced order without exposing secret", async () 
 test("Guardian replay reports conservative intrabar ambiguity", () => {
   const result = compareGuardianWithControl([{ time: 1, price: 100, high: 106, low: 97, dataHealthy: true, fastFlush: false, fastReclaim: false, sellerAcceptance: false, failedRebound: false, expansion: true }], "LONG", 100, 98);
   assert.equal(result.control3RHit, true); assert.equal(result.ambiguity, true); assert.equal(result.maxFavorableR, 3);
+});
+
+test("browser causal ledger survives reload and supports validated backup restore", () => {
+  const values = new Map();
+  const storage = { getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) };
+  const event = { eventId: "event-1", correlationId: "corr-1", type: "MARKET_TICK", occurredAt: 1, payload: { symbol: "BTCUSDT" } };
+  const first = new BrowserCausalLedger("test-ledger", storage);
+  first.append(event);
+  first.recordEvaluation({ correlationId: "corr-1", symbol: "BTCUSDT", capturedAt: 1, snapshot: {}, macro: {}, opinions: [], conflicts: [], arbiter: {}, plan: null, safety: {}, guardian: "NORMAL" });
+  const second = new BrowserCausalLedger("test-ledger", storage);
+  assert.equal(second.events().length, 1); assert.equal(second.evaluations().length, 1);
+  const backup = second.exportJson();
+  second.clear(); assert.equal(second.events().length, 0);
+  const restored = second.restoreJson(backup);
+  assert.deepEqual(restored, { events: 1, evaluations: 1, discarded: 0 });
+  assert.throws(() => second.restoreJson("{\"version\":99}"), /INVALID_LEDGER_BACKUP/);
 });
 
 test("runtime orchestrator wires brains, conflicts, arbiter, plan and causal events", () => {
