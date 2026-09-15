@@ -1,0 +1,76 @@
+name: research-matrix-r1
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/RESEARCH_MATRIX_R1.md'
+      - 'scripts/run_research_matrix_symbol_r1.mjs'
+      - 'scripts/aggregate_research_matrix_r1.mjs'
+      - '.github/workflows/research-matrix-r1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '${{ env.NODE_VERSION }}'}
+      - run: sha256sum docs/RESEARCH_MATRIX_R1.md
+      - run: |
+          node --check scripts/run_research_matrix_symbol_r1.mjs
+          node --check scripts/aggregate_research_matrix_r1.mjs
+
+  symbol:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        symbol: [BTCUSDT,ETHUSDT,BNBUSDT,XRPUSDT,ADAUSDT,SOLUSDT,DOGEUSDT,LINKUSDT,AVAXUSDT,DOTUSDT,LTCUSDT,ATOMUSDT,AAVEUSDT,NEARUSDT,INJUSDT,OPUSDT,ARBUSDT,APTUSDT,SUIUSDT,SEIUSDT,TAOUSDT,ONDOUSDT,TONUSDT,FETUSDT,WIFUSDT,BCHUSDT,TRXUSDT,XLMUSDT,ETCUSDT,FILUSDT,UNIUSDT,ICPUSDT,ALGOUSDT,VETUSDT,RUNEUSDT,GALAUSDT,SANDUSDT,MANAUSDT,CRVUSDT,CHZUSDT,LDOUSDT,DYDXUSDT,IMXUSDT,STXUSDT,COMPUSDT,SNXUSDT,ZECUSDT,KAVAUSDT,XTZUSDT,ENJUSDT]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '${{ env.NODE_VERSION }}'}
+      - run: sudo apt-get update -qq && sudo apt-get install -y unzip
+      - name: Load symbol once for all matrix hypotheses
+        env:
+          RMX_SYMBOL: ${{ matrix.symbol }}
+          RMX_OUTPUT_DIR: runtime/research-matrix-r1
+        run: node scripts/run_research_matrix_symbol_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rmx-${{ matrix.symbol }}
+          path: runtime/research-matrix-r1/${{ matrix.symbol }}.json
+          retention-days: 14
+
+  aggregate:
+    needs: symbol
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '${{ env.NODE_VERSION }}'}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rmx-*
+          path: runtime/research-matrix-r1-input
+          merge-multiple: true
+      - name: Aggregate all frozen hypotheses
+        env:
+          RMX_INPUT_DIR: runtime/research-matrix-r1-input
+          RMX_SUMMARY_DIR: runtime/research-matrix-r1-summary
+        run: node scripts/aggregate_research_matrix_r1.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-matrix-r1-summary
+          path: runtime/research-matrix-r1-summary/**
+          retention-days: 30
