@@ -7,6 +7,10 @@
 3. Run `npm test`, `npm run test:python`, and `npm run lint`.
 4. Run `npm run dev` for the terminal. Public chart data needs no keys.
 
+## Causal ledger backup
+
+The OS control center keeps a bounded local causal ledger across browser reloads. It is paper/read-only state: it contains no API keys and cannot submit orders. Use **Export JSON** before clearing browser data or moving a research session, and **Restore** to validate and load that backup. A server-side D1/Postgres ledger is still required for 24/7 deployment and is not implied by the local copy.
+
 ## Safety response
 
 - `SAFE_MODE` blocks new AUTO entries but permits pre-authorized reduce-only protection of existing AUTO positions.
