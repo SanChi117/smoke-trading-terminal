@@ -8,7 +8,7 @@ export class D1LedgerStore {
 
   async appendSystemEvent(event: LedgerSystemEvent): Promise<void> {
     await this.database.prepare(`
-      INSERT INTO system_events
+      INSERT OR IGNORE INTO system_events
         (event_id, correlation_id, decision_id, type, severity, component, symbol, payload_json, occurred_at, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(event.eventId, event.correlationId, event.decisionId ?? null, event.type, event.severity, event.component, event.symbol ?? null, JSON.stringify(event.payload), event.occurredAt, Date.now()).run();
