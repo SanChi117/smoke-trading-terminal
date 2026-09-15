@@ -8,8 +8,10 @@ test('stream starts REST recovery and rejects frames for another symbol', async 
   const original = globalThis.WebSocket;
   let socket;
   class TestSocket {
-    constructor() { socket = this; }
-    close() { this.onclose?.(); }
+    constructor() {
+      socket = { close: () => socket.onclose?.() };
+      return socket;
+    }
   }
   globalThis.WebSocket = TestSocket;
   t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify([[60000,'100','102','99','101','10']])));
