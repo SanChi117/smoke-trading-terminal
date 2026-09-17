@@ -1,0 +1,60 @@
+# Tests
+
+## Test 1 - Inspect and navigate Futures candles [sanity]
+Viewport: desktop (1280x800)
+Covers: public USD-M Futures history, chart interaction, timeframe and symbol isolation, strategy overlay controls, direct Binance and GET /api/market fallback
+Description: Verify real market data is rendered for the selected instrument.
+Steps:
+1. Open terminal and wait for the BTCUSDT 15m history.
+2. Zoom and drag the candle chart, toggle EMA20 and return to current time.
+3. Choose ETH and then 5m.
+Expected: Candles and OHLC values are visible, the chart remains usable after zoom/pan, and ETH history replaces BTC under the ETH label.
+
+## Test 2 - Sort scanner and open a symbol on mobile
+Viewport: mobile (375x667)
+Covers: scanner sorting, navigation, responsive interactions
+Description: Verify the scanner exposes ordered selectable symbols.
+Steps:
+1. Open Сканер.
+2. Select Монета A–Z in Сортировка сканера.
+3. Open AAVEUSDT from the first row.
+Expected: Scanner rows are alphabetical with AAVEUSDT first; selecting it opens the terminal for AAVEUSDT.
+
+## Test 3 - Preserve and export decision journal
+Viewport: desktop (1280x800)
+Covers: local decision journal persistence, export, destructive confirmation
+Description: Verify journal controls preserve state when deletion is cancelled.
+Steps:
+1. Open Журнал and note any available records.
+2. Click Экспорт JSON.
+3. Click Очистить and cancel confirmation.
+4. Refresh and reopen Журнал.
+Expected: A JSON download occurs; cancelling preserves the existing journal, including an empty journal if no decisions have been generated.
+
+## Test 4 - Backtest and review historical evidence
+Viewport: desktop (1280x800)
+Covers: backtest selection/results, historical trade chart with entry/SL/TP, audit navigation
+Description: Verify backtest results remain tied to their instrument and historical audit is accessible.
+Steps:
+1. Open Бэктест, select 7 дней and run it.
+2. If trades exist, click На график on one and inspect the historical chart, then close it.
+3. Open Аудит сделок and return to Терминал.
+Expected: The backtest displays metrics and a trade list (zero trades is valid); any selected trade opens its own historical candles and entry/SL/TP; audit and return navigation work. External market errors must be visible rather than silently showing fabricated results.
+
+## Test 5 - Remain PAPER-only and expose unavailable data
+Viewport: desktop (1280x800)
+Covers: read-only boundary, visible network failures, retry, empty chart behavior, GET /api/market error handling
+Description: Verify the terminal does not submit real orders and explains unavailable history.
+QA Faults:
+```json
+[{"method":"GET","path":"/api/market","status":503,"body_json":{"error":"Test market gateway unavailable"}}]
+```
+Steps:
+1. Open the terminal and click Обновить.
+2. Inspect the chart and strategy plan.
+3. If market history fails, use Повторить загрузку.
+Expected: Successful direct Futures data may still render; otherwise a visible error and retry are provided. No fabricated candles appear and no real-order submission control is exposed; PAPER ONLY remains visible.
+
+
+
+Extended acceptance within Test 1: also select 1m and 1M, inspect the correct interval label, and confirm price labels follow the instrument tick precision. Extended acceptance within Test 2: use Поиск монеты, favorites, and workspace switching. System module statuses must not claim connected live execution.
