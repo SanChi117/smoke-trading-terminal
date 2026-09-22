@@ -14,6 +14,7 @@ function stableId(plan: TradePlan): string {
 }
 
 export interface ExecutionJournal {
+  entriesPaused?(): boolean;
   reserve(order: SubmitOrder, plan: TradePlan): Promise<boolean>;
   record(clientOrderId: string, state: "SUBMITTED" | "UNCERTAIN", receipt: Readonly<Record<string, unknown>>): Promise<void>;
 }
@@ -34,6 +35,7 @@ export async function executePlan(plan: TradePlan, price: number, rules: Exchang
   if (policy.mode === "AUTO_OBSERVE") return Object.freeze({ state: "SIMULATED", reason: "AUTO_OBSERVE", sizing, order });
   if (policy.mode !== "AUTO_LIVE" || !policy.liveEnabled || !policy.credentialsReady || !policy.isolatedAutoAccount || !policy.protectionReady || !gateway || !context.journal) return Object.freeze({ state: "SAFE_MODE", reason: "LIVE_PERMISSION_ISOLATION_PROTECTION_OR_LEDGER_MISSING", sizing, order });
   try {
+    if (context.journal.entriesPaused?.() !== false) return Object.freeze({ state: "SAFE_MODE", reason: "AUTO_ENTRIES_PAUSED_OR_CONTROL_MISSING", sizing, order });
     if (!await context.journal.reserve(order, plan)) return Object.freeze({ state: "DUPLICATE_SUPPRESSED", reason: "RECONCILE_EXISTING_INTENT", sizing, order });
   } catch { return Object.freeze({ state: "SAFE_MODE", reason: "LEDGER_RESERVATION_FAILED", sizing, order }); }
   try {

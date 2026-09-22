@@ -13,6 +13,7 @@ const policy = { mode: 'AUTO_LIVE', liveEnabled: true, credentialsReady: true, i
 test('uncertain submit cannot duplicate across restart or concurrent callers', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'smoke-execution-'));
   let journal = new ExecutionStore(join(dir, 'ledger.sqlite'));
+  journal.db.prepare('UPDATE runtime_control SET entries_paused=0 WHERE id=1').run();
   let calls = 0;
   const gateway = { submit: async () => { calls++; throw new Error('timeout after exchange accepted'); } };
   try {
@@ -28,7 +29,7 @@ test('uncertain submit cannot duplicate across restart or concurrent callers', a
 test('ledger outage, missing protection, expired plan never reach exchange', async () => {
   let calls = 0;
   const gateway = { submit: async () => { calls++; return { exchangeOrderId: '1', status: 'NEW' }; } };
-  const journal = { reserve: async () => { throw new Error('disk full'); }, record: async () => {} };
+  const journal = { entriesPaused: () => false, reserve: async () => { throw new Error('disk full'); }, record: async () => {} };
   assert.equal((await executePlan(plan, 100, rules, policy, gateway, { journal, now: 1000 })).reason, 'LEDGER_RESERVATION_FAILED');
   assert.equal((await executePlan(plan, 100, rules, { ...policy, protectionReady: false }, gateway, { journal, now: 1000 })).state, 'SAFE_MODE');
   assert.equal((await executePlan(plan, 100, rules, policy, gateway, { journal, now: 2000 })).state, 'REJECTED');
@@ -45,6 +46,7 @@ test('limit quantity uses expensive entry price and malformed stops/expiry are r
 
 test('accepted ACK is durable and changed intent cannot reuse the same plan', async () => {
   const journal = new ExecutionStore(':memory:');
+  journal.db.prepare('UPDATE runtime_control SET entries_paused=0 WHERE id=1').run();
   let calls = 0;
   const gateway = { submit: async () => { calls++; return { exchangeOrderId: 'exchange-1', status: 'PARTIALLY_FILLED' }; } };
   try {
@@ -55,4 +57,25 @@ test('accepted ACK is durable and changed intent cannot reuse the same plan', as
     assert.equal((await executePlan(changed, 101, rules, policy, gateway, { journal, now: 1000 })).reason, 'LEDGER_RESERVATION_FAILED');
     assert.equal(calls, 1);
   } finally { journal.close(); }
+});
+
+test('durable Telegram pause gates new entry reservation while resume preserves every live gate',async()=>{
+ const {TelegramStore}=await import('../core/ledger/telegram-store.mjs');
+ const {applyTelegramCommand}=await import('../integrations/telegram/durable.ts');
+ const dir=mkdtempSync(join(tmpdir(),'control-'));const path=join(dir,'ledger.sqlite');
+ const journal=new ExecutionStore(path),control=new TelegramStore(path);let calls=0;
+ const gateway={submit:async()=>{calls++;return {exchangeOrderId:'1',status:'NEW'};}};
+ const auth={chatId:'7',userIds:['8'],newEntriesSafe:true,now:1000};
+ const update={updateId:1,chatId:'7',userId:'8',date:1000,text:'/resume_auto_entries'};
+ try {
+  assert.equal((await executePlan(plan,100,rules,policy,gateway,{journal,now:1000})).reason,'AUTO_ENTRIES_PAUSED_OR_CONTROL_MISSING');
+  applyTelegramCommand(control,update,auth);
+  assert.equal((await executePlan(plan,100,rules,{...policy,protectionReady:false},gateway,{journal,now:1000})).state,'SAFE_MODE');
+  assert.equal((await executePlan(plan,100,rules,policy,gateway,{journal,now:1000})).state,'SUBMITTED');
+  applyTelegramCommand(control,{...update,updateId:2,text:'/pause_auto_entries'},auth);
+  const another=compileTradePlan({...input,planId:'another'});
+  assert.equal((await executePlan(another,100,rules,policy,gateway,{journal,now:1000})).state,'SAFE_MODE');
+  await assert.rejects(journal.reserve({clientOrderId:'smoke-racing'},another),/PAUSED/);
+  assert.equal(calls,1);
+ }finally{journal.close();control.close();rmSync(dir,{recursive:true,force:true});}
 });

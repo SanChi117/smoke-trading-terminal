@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { createTelegramTables } from './telegram-store.mjs';
 
 // Reserve durably before any exchange call. An uncertain result is never retried
 // by submit: reconciliation must resolve it using the same clientOrderId.
@@ -16,6 +17,7 @@ export class ExecutionStore {
         receipt_json TEXT NOT NULL, recorded_at INTEGER NOT NULL,
         PRIMARY KEY(client_order_id, exchange_time)
       );`);
+    createTelegramTables(this.db);
   }
   async reserve(order, plan) {
     const planJson = JSON.stringify(plan);
@@ -28,6 +30,7 @@ export class ExecutionStore {
         this.db.exec('COMMIT');
         return false;
       }
+      if (this.entriesPaused()) throw new Error('AUTO_ENTRIES_PAUSED');
       this.db.prepare('INSERT INTO execution_intents VALUES (?, ?, ?, ?, ?, NULL, ?)').run(order.clientOrderId, plan.planId, planJson, orderJson, 'RESERVED', Date.now());
       this.db.exec('COMMIT');
       return true;
@@ -38,6 +41,7 @@ export class ExecutionStore {
     const result = this.db.prepare("UPDATE execution_intents SET state = ?, receipt_json = ?, updated_at = ? WHERE client_order_id = ? AND state = 'RESERVED'").run(state, JSON.stringify(receipt), Date.now(), clientOrderId);
     if (result.changes !== 1) throw new Error('EXECUTION_TRANSITION_REJECTED');
   }
+  entriesPaused() { return this.db.prepare('SELECT entries_paused FROM runtime_control WHERE id=1').get()?.entries_paused !== 0; }
   unresolved() {
     return this.db.prepare("SELECT * FROM execution_intents WHERE state IN ('RESERVED', 'UNCERTAIN') ORDER BY updated_at LIMIT 100").all();
   }

@@ -4,7 +4,7 @@ import { ExecutionStore } from '../core/ledger/execution-store.mjs';
 import { reconcileExecutionIntents } from '../services/execution/reconcile-intents.ts';
 const local = { clientOrderId: 'smoke-1', symbol: 'BTCUSDT', side: 'BUY', quantity: 1 };
 const remote = { ...local, exchangeOrderId: 'exchange-1', originalQuantity: 1, executedQuantity: 0.4, averagePrice: 100, updateTime: 1000, status: 'PARTIALLY_FILLED' };
-async function fixture(t) { const store = new ExecutionStore(':memory:'); t.after(() => store.close()); await store.reserve(local, { planId: 'p1' }); return store; }
+async function fixture(t) { const store = new ExecutionStore(':memory:'); store.db.prepare('UPDATE runtime_control SET entries_paused=0 WHERE id=1').run(); t.after(() => store.close()); await store.reserve(local, { planId: 'p1' }); return store; }
 const run = (store, value) => reconcileExecutionIntents(store, { lookup: async () => value }, { isolatedAutoAccount: true, now: 3000 });
 test('uncertain order resolves to partial fill then filled, preserves audit and reservation', async t => {
   const store = await fixture(t);

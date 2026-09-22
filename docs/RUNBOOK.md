@@ -89,3 +89,33 @@ https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest
 Only mocked private transport has been exercised. Position reconciliation, trade-level
 fees/fills, protection acknowledgement, scheduler integration and live acceptance remain
 outstanding. No credentials or real exchange operations were used in development.
+
+## Durable Guardian, controls and server observer (2026-09-22)
+
+See `docs/VPS_DEPLOYMENT.md` for the exact process commands, service templates and recovery.
+The read-only observer now collects data continuously and commits causal observations plus
+optional alerts atomically. It does not arm execution or instantiate a private gateway.
+
+Guardian state is persisted per immutable plan/account/position binding. Events are
+idempotent and time-monotonic; a flush/reclaim holds, failure advances to exit, and a
+feed fault uses only explicitly allowed `EMERGENCY_CLOSE`. A close is an opposite-side,
+bounded-quantity MARKET reduce-only intent. Fresh AUTO ownership and isolation are
+required before dispatch. Claim precedes network I/O; timeout/crash requires exact-order
+reconciliation. Partial fill and final fill recovery use `reconcileExecutionIntents` with
+`GuardianStore`. No production process invokes the dispatcher yet: trusted raw fast-feed
+classification, account ownership evidence and protective stops are still pending.
+
+Replay now settles the Guardian and fixed 3R control independently through the full sample,
+with initial-stop enforcement and conservative stop-first intrabar ties. Sample-wide MFE/MAE
+are not post-exit realized PnL; replay prices exclude fees, slippage and gap execution.
+
+Telegram uses persistent queue leases, retry delay, audited commands, user+chat allowlists
+and a persistent polling cursor. Forwarded/via-bot commands are ignored. Command replies
+and pause changes commit together. `ExecutionStore` shares the pause row and checks it
+inside new-intent reservation; a separate precheck in `executePlan` fails closed when
+control storage is missing. Fresh ledgers start paused. Existing positions may still be
+reduced while entries are paused. The legacy in-memory Telegram client is compatibility
+code only; new workers use the durable modules.
+
+Telegram protocol source: https://core.telegram.org/bots/api (checked 2026-09-22).
+All exchange/Telegram mutations in tests use injected fake transports.
