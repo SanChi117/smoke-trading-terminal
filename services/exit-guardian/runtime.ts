@@ -5,7 +5,7 @@ import type { GuardianStore } from '../../core/ledger/guardian-store.mjs';
 import type { AutoExecutionGateway, SubmitOrder } from '../execution/engine.ts';
 
 export type OwnedPosition = Readonly<{ positionId: string; planId: string; accountId: string; accountKind: 'AUTO' | 'MANUAL'; symbol: string; side: 'LONG' | 'SHORT'; quantity: number; observedAt: number }>;
-export type GuardianEvent = GuardianInput & Readonly<{ eventId: string; time: number; symbol: string; version: 'guardian/1' }>;
+export type GuardianEvent = GuardianInput & Readonly<{ eventId: string; time: number; symbol: string; version: 'guardian/1'; researchOnly?: boolean }>;
 const fresh = (time: number, now: number) => Number.isFinite(time) && time <= now && now - time <= 5_000;
 function assertPosition(position: OwnedPosition, plan: TradePlan, accountId: string, now: number) {
   if (!accountId || position.accountId !== accountId || position.accountKind !== 'AUTO' || !position.positionId.startsWith('smoke-')
@@ -33,9 +33,9 @@ export function evaluateGuardian(store: GuardianStore, plan: TradePlan, position
     clientOrderId: `smoke-g-${guardianDigest({ accountId: position.accountId, positionId: position.positionId, planId: plan.planId }).slice(0, 24)}`,
     symbol: position.symbol, side: position.side === 'LONG' ? 'SELL' : 'BUY', type: 'MARKET', quantity: position.quantity, reduceOnly: true,
   } : undefined;
-  const result = { version: event.version, state, action: order ? 'REDUCE_INTENT' : action ? 'ALERT_POLICY_BLOCKED' : 'HOLD', eventId: event.eventId, positionId: position.positionId };
+  const result = { version: event.version, researchOnly: event.researchOnly === true, state, action: order ? 'REDUCE_INTENT' : action ? 'ALERT_POLICY_BLOCKED' : 'HOLD', eventId: event.eventId, positionId: position.positionId };
   return store.advance({ positionId: position.positionId, eventId: event.eventId, input,
-    binding: { plan, accountId: position.accountId, side: position.side, symbol: position.symbol },
+    binding: { plan, accountId: position.accountId, side: position.side, symbol: position.symbol, researchOnly: event.researchOnly === true },
     expectedRevision: previous?.revision ?? 0, time: event.time, result, order, notification: context.notificationChatId && previous?.state !== state
       ? { chatId: context.notificationChatId, text: `Guardian ${position.symbol}: ${state}; ${result.action}. Position ${position.positionId}` } : null });
 }
@@ -48,9 +48,10 @@ export async function dispatchGuardian(store: GuardianStore, positionId: string,
   try { assertPosition(context.position, context.plan, context.accountId, context.now ?? Date.now()); }
   catch { return { state: 'SAFE_MODE', reason: 'AUTO_POSITION_NOT_VERIFIED' }; }
   const persisted = store.get(positionId);
-  if (!persisted || persisted.binding_hash !== guardianDigest({ plan: context.plan, accountId: context.position.accountId, side: context.position.side, symbol: context.position.symbol })) return { state: 'SAFE_MODE', reason: 'IMMUTABLE_PLAN_MISMATCH' };
+  if (!persisted || persisted.binding_hash !== guardianDigest({ plan: context.plan, accountId: context.position.accountId, side: context.position.side, symbol: context.position.symbol, researchOnly: false })) return { state: 'SAFE_MODE', reason: 'IMMUTABLE_PLAN_MISMATCH' };
   const saved = store.action(positionId);
   if (!saved) return { state: 'NO_ACTION' };
+  if (saved.state === 'RESEARCH') return { state: 'NOT_ARMED' };
   if (typeof saved.order_json !== 'string') return { state: 'SAFE_MODE', reason: 'INVALID_SAVED_ORDER' };
   const order = JSON.parse(saved.order_json) as SubmitOrder;
   const position = context.position;

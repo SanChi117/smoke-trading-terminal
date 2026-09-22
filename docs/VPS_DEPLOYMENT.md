@@ -105,6 +105,6 @@ residual-position and protection reconciliation still require completion.
 Existing Docker/PostgreSQL artifacts describe the target architecture; these SQLite
 runtime journals have not been migrated to that normalized production ledger. Remaining
 acceptance includes trusted account/position streams, protective-order acknowledgements,
-conditional adapters and slippage guards, raw fast-feed Guardian classification,
+conditional adapters and slippage guards, raw fast-feed Guardian integration and research-classifier promotion,
 fees/PnL attribution, hosted authenticated journal/browser acceptance and VPS verification.
 Do not start the 14-day AUTO-LIVE policy before those gates are implemented and verified.

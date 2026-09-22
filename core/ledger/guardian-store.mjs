@@ -16,6 +16,11 @@ export class GuardianStore {
       CREATE TABLE IF NOT EXISTS guardian_actions (position_id TEXT PRIMARY KEY, order_json TEXT NOT NULL, state TEXT NOT NULL, receipt_json TEXT);
       CREATE TABLE IF NOT EXISTS guardian_reconciliations (client_order_id TEXT NOT NULL, exchange_time INTEGER NOT NULL, receipt_json TEXT NOT NULL, PRIMARY KEY(client_order_id,exchange_time));`);
     createTelegramTables(this.db);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      if (!this.db.prepare('PRAGMA table_info(guardian_events)').all().some(column => column.name === 'input_json')) this.db.exec('ALTER TABLE guardian_events ADD COLUMN input_json TEXT');
+      this.db.exec('COMMIT');
+    } catch(error) { this.db.exec('ROLLBACK'); throw error; }
   }
   get(positionId) { return this.db.prepare('SELECT * FROM guardian_positions WHERE position_id=?').get(positionId); }
   event(positionId, eventId, input) {
@@ -34,8 +39,8 @@ export class GuardianStore {
       if (current && (current.binding_hash !== guardianDigest(binding) || time <= current.event_time)) throw new Error('GUARDIAN_BINDING_OR_TIME_CONFLICT');
       this.db.prepare(`INSERT INTO guardian_positions VALUES (?,?,?,?,?) ON CONFLICT(position_id) DO UPDATE SET state=excluded.state,event_time=excluded.event_time,revision=excluded.revision`)
         .run(positionId, guardianDigest(binding), result.state, time, expectedRevision + 1);
-      if (order) this.db.prepare("INSERT INTO guardian_actions VALUES (?,?,'PENDING',NULL) ON CONFLICT(position_id) DO NOTHING").run(positionId, encode(order));
-      this.db.prepare('INSERT INTO guardian_events VALUES (?,?,?,?)').run(positionId, eventId, guardianDigest(input), JSON.stringify(result));
+      if (order) this.db.prepare("INSERT INTO guardian_actions VALUES (?,?,?,NULL) ON CONFLICT(position_id) DO NOTHING").run(positionId, encode(order), result.researchOnly ? "RESEARCH" : "PENDING");
+      this.db.prepare('INSERT INTO guardian_events(position_id,event_id,input_hash,result_json,input_json) VALUES (?,?,?,?,?)').run(positionId, eventId, guardianDigest(input), JSON.stringify(result), encode(input));
       if (notification) enqueueTelegram(this.db, `guardian:${positionId}:${eventId}`, notification.chatId, notification.text, time);
       this.db.exec('COMMIT'); return result;
     } catch (error) { this.db.exec('ROLLBACK'); throw error; }

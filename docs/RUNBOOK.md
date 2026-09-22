@@ -119,3 +119,39 @@ code only; new workers use the durable modules.
 
 Telegram protocol source: https://core.telegram.org/bots/api (checked 2026-09-22).
 All exchange/Telegram mutations in tests use injected fake transports.
+
+## Raw fast-stream Guardian research
+
+`normalizeFastEvent` accepts only USD-M `aggTrade`/individual `bookTicker` payloads.
+`FastGuardianClassifier` consumes event-time windows and combines risk-normalized velocity,
+notional-weighted aggressor flow, spread/freshness and a latched local reference. A rapid
+price change alone cannot trigger flush; reclaim also needs recovered direction-adjusted
+flow. Sustained adverse acceptance and failed rebound are distinct signals. Long/short
+interpretation is symmetric. Missing/stale channels, trade-ID gaps, out-of-order/conflicting
+packets and disconnects invalidate the classifier until explicit reset and new warmup.
+
+Parameters are frozen as `fast-guardian-challenger/1`, **research only**, with synthetic
+positive/negative replay coverage. No profitability/production validation is claimed.
+`GuardianResearchPipeline` persists complete input evidence and the resulting Guardian
+state. Research provenance is part of the immutable binding; its exit intents cannot be
+claimed by live dispatch or included in private-order reconciliation. A fresh pipeline
+starts without stream memory; restart requires warmup, not fabricated continuity.
+
+```sh
+node --experimental-strip-types scripts/replay-fast-guardian.mjs context.json events.jsonl research.sqlite
+```
+
+`context.json` contains a valid `plan` and a simulated AUTO `position`. JSONL entries are
+`{"kind":"EVENT","receivedAt":1234,"payload":<raw Binance object>}`, or
+`{"kind":"SAMPLE","time":1235}`. `DISCONNECT`/`RESTART` exercise transport faults. Replay
+positions are simulated at sample time; this is never evidence of actual account ownership.
+Use a dedicated research database and unique position IDs for each experiment. The CLI
+has no network client. Captures and live socket scheduling are separate integration work;
+raw evidence can grow the journal quickly and needs retention/storage acceptance before
+continuous production recording. Earlier rows lacking raw input retain their hashes and
+cannot have missing evidence reconstructed retroactively.
+
+Payload contracts checked against official USD-M market/public stream references on
+2026-09-22:
+https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/ws-streams/market
+https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/ws-streams/public
