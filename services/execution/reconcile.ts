@@ -10,6 +10,6 @@ export function reconcileAutoOrders(local: readonly ReconcileOrder[], exchange: 
     if (!stored) actions.push({ type: "INSERT_LOCAL", clientOrderId: id, status: remote.status });
     else if (stored.status !== remote.status) actions.push({ type: "UPDATE_LOCAL", clientOrderId: id, status: remote.status });
   }
-  for (const [id, stored] of localAuto) if (!exchangeAuto.has(id) && !["FILLED", "CANCELLED", "REJECTED"].includes(stored.status)) actions.push({ type: "FLAG_LOCAL_GHOST", clientOrderId: id, status: stored.status });
+  for (const [id, stored] of localAuto) if (!exchangeAuto.has(id) && !["FILLED", "CANCELED", "CANCELLED", "REJECTED", "EXPIRED", "EXPIRED_IN_MATCH"].includes(stored.status)) actions.push({ type: "FLAG_LOCAL_GHOST", clientOrderId: id, status: stored.status });
   return Object.freeze(actions);
 }

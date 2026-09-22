@@ -46,3 +46,11 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - Added SQLite execution intent reservation, duplicate suppression after timeout/restart, immutable-intent conflict detection and protection/ledger gates. Tested only with fake exchange gateways. STOP/LADDER are rejected explicitly pending complete adapters.
 - Validation: build + 97 JS tests, 6 Python tests, lint and safety validator passed. Freshness is evaluated after request completion; closed-candle/no-lookahead and invalid-source cases covered.
 - Full master specification remains incomplete: normalized production ledger, autonomous data runner, live execution/reconciliation/protection, Guardian streams, durable Telegram, native drawings and complete acceptance. Main update still subject to the prior approval rejection; code is preserved in PR #87.
+
+## 2026-09-22 read-only reconciliation checkpoint
+
+- Completed the previously interrupted GitHub save: published UI/observation checkpoint is now preserved in review commit `fd9b633` (local `8fc68bd`).
+- Added bounded reconciliation of saved execution intents through exact signed order lookup, with atomic audit records and monotonic cumulative fills. No blind retry after missing/unknown order results.
+- Account isolation, wrong symbol/ID/quantity, stale/conflicting events and regression from partial-fill ACK are covered by fake-gateway tests. Read-only CLI uses the same service and persistent store.
+- Validation: production build, 103 JavaScript tests and lint passed; six Python tests and safety validator also passed during this checkpoint.
+- Published site was not changed in this checkpoint. Private API requests and real orders were not sent. Full Trading OS acceptance remains incomplete; in particular this is order-state recovery, not complete position/protection reconciliation or an autonomous production runner.

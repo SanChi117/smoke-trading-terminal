@@ -68,3 +68,24 @@ STOP/LADDER adapters are explicitly rejected until implemented, rather than sile
 converting them to a single limit order. This is tested with fake gateways only. The
 production reconciler, market-order price/slippage protection, conditional order adapters
 and Guardian protection acknowledgement remain incomplete; AUTO-LIVE remains disabled.
+
+## Read-only order reconciliation
+
+`node --experimental-strip-types scripts/reconcile-execution.mjs EXISTING_LEDGER.sqlite [cursor]`
+processes at most 100 saved intents. It requires the isolated AUTO account flag and
+server-side Binance credentials already described above; it never calls submit/cancel.
+A returned cursor continues the next bounded batch. `RECONCILED_BATCH` is not global
+readiness or authorization to trade. SAFE_MODE leaves reservations locked.
+
+The adapter queries the exact `symbol` + `origClientOrderId` using signed GET
+`/fapi/v1/order`, rather than inferring absence from open orders. Missing orders and
+transport errors remain unresolved. Partial and final fills update the intent and an
+append-only reconciliation table atomically. Identity, cumulative quantity and timestamps
+are checked; stale responses or contradictory ACKs cannot roll state backwards.
+
+Contract source checked 2026-09-22:
+https://developers.binance.com/docs/derivatives/usds-margined-futures/trade/rest-api/Query-Order
+
+Only mocked private transport has been exercised. Position reconciliation, trade-level
+fees/fills, protection acknowledgement, scheduler integration and live acceptance remain
+outstanding. No credentials or real exchange operations were used in development.
