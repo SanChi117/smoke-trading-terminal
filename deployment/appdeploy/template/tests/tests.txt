@@ -58,3 +58,26 @@ Expected: Successful direct Futures data may still render; otherwise a visible e
 
 
 Extended acceptance within Test 1: also select 1m and 1M, inspect the correct interval label, and confirm price labels follow the instrument tick precision. Extended acceptance within Test 2: use Поиск монеты, favorites, and workspace switching. System module statuses must not claim connected live execution.
+
+## Test 6 - Inspect research observation and guard private journal
+Viewport: desktop (1280x800)
+Covers: direct Binance public observation, measured market features, causal details, invalid symbol, anonymous POST /api/observations and GET /api/observations denial
+Description: Verify market observation renders evidence and never exposes private journal data without authentication.
+Steps:
+1. Open Brains и журнал. Set Символ анализа to BTCUSDT and click Анализировать.
+2. Inspect the timestamp, source, Macro, individual brain evidence and conflicts. Expand Исходные данные и полная цепочка.
+3. Enter BAD and click Анализировать.
+4. Without signing in, click Анализ + запись and Загрузить журнал with BTCUSDT restored.
+Expected: A successful preview shows actual Binance evidence collected by the browser and disabled execution; upstream failure shows a visible error. Invalid symbol is rejected. Anonymous journal actions require sign-in and never show another user's records.
+
+## Test 7 - Save and reload a private observation
+Viewport: desktop (1280x800)
+Covers: authenticated POST /api/observations, GET /api/observations, per-user durable storage, history selection, sign-out clearing
+Description: Verify a signed-in user can persist and revisit a complete decision chain.
+Steps:
+1. Open Brains и журнал and sign in using the authorized test account via Войти для журнала.
+2. Analyze BTCUSDT with Анализ + запись and note the saved identifier.
+3. Refresh, reopen Brains и журнал and click Загрузить журнал.
+4. Open the saved row and expand its source evidence.
+5. Click Выйти.
+Expected: A confirmed save is visible after reload with the same symbol, decision timestamp and source evidence. Signing out clears displayed private records. Failed upstream or database writes are shown as errors, never as saved records.

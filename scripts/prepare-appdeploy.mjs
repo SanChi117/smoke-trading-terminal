@@ -37,6 +37,8 @@ async function copySource(filename) {
 }
 await copySource('app/components/TerminalV6.tsx');
 await copySource('app/audit/page.tsx');
+await copySource('app/components/ObservationPanel.tsx');
+await copySource('services/market-data/observation-features.ts');
 await copySource('app/globals.css');
 await fs.writeFile(path.join(output, 'src/vite-env.d.ts'), '/// <reference types="vite/client" />\n');
 await fs.writeFile(path.join(output, 'source.json'), JSON.stringify({ source: 'SanChi117/smoke-trading-terminal', canonical: 'main', generated: true }, null, 2));

@@ -35,3 +35,36 @@ and reopens the database and backup and verifies exact record equality.
 
 This is an observation journal, not completion of the normalized production Ledger,
 a live market feature pipeline, UI integration, PostgreSQL or position protection.
+
+## Published research observation panel
+
+The AppDeploy release exposes `#brains`. It fetches public USD-M candles (1M/1w/1d/15m),
+BTC-relative return, funding and two 5m OI samples through the browser's direct transport.
+Feature definitions are versioned as `measured-challenger/1`; these simple research
+heuristics are not the frozen V5 logic and are not promoted trading signals.
+Only closed candles enter features. Invalid OHLC, missing history, gaps, stale funding/OI
+or misaligned benchmark data cannot authorize an entry. The UI displays source evidence.
+
+The AppDeploy server's direct Binance request returned HTTP 451 in verification. No
+server retry/proxy around that restriction is used. The browser channel is the existing
+terminal data path, and it propagates access-denied/rate-limit responses unchanged.
+Browser captures are explicitly `BROWSER_UNVERIFIED` and cannot arm execution.
+
+After AppDeploy sign-in, POST `/api/observations` validates the bounded capture and
+recomputes decisions before writing to the authenticated user's table. GET returns a
+bounded page with the SDK cursor. No client-supplied decision or owner ID is trusted.
+The hosted key/value store is a private research journal, not the production transactional
+execution ledger; it has no atomic exactly-once reservation guarantee. No automatic
+write retry is used. Authenticated persistence still needs verification with a signed-in
+account; anonymous guards and live research analysis were verified in browser.
+
+## Durable execution reservations
+
+`ExecutionStore` persists intents in SQLite before `executePlan` calls an injected gateway.
+An uncertain submit stays locked after restart; a second call is suppressed and must be
+resolved by reconciliation, never by blind resubmission. A ledger failure before reservation
+prevents submission. `protectionReady` and the durable journal are required in live policy.
+STOP/LADDER adapters are explicitly rejected until implemented, rather than silently
+converting them to a single limit order. This is tested with fake gateways only. The
+production reconciler, market-order price/slippage protection, conditional order adapters
+and Guardian protection acknowledgement remain incomplete; AUTO-LIVE remains disabled.

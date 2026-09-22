@@ -36,3 +36,13 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - Validation: production build and 87 JS tests passed; 6 Python tests and safety validator passed; lint passed after correcting an existing WebSocket test fixture.
 - This checkpoint does not change the published chart. Observation runner is not yet wired to live feature extraction or UI. Full master acceptance is still incomplete.
 - Review branch `review/terminal-recovery-observation-20260917` preserves recovered work without updating the rejected default branch. No live orders performed.
+
+## 2026-09-17 published observation UI and durable execution checkpoint
+
+- Published AppDeploy snapshot `1789667516360`: `https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#brains`.
+- Browser verified real BTC closed candles → measured features → Macro/Brains/conflicts → deterministic WATCH, with all required source freshness FRESH. Invalid symbols and anonymous save/history actions visibly rejected. Existing candles and V5 output still rendered.
+- Found AppDeploy server Binance HTTP 451; no server bypass added. Research uses the existing direct browser public data channel. Protected journal recomputes bounded browser evidence; explicitly unverified captures never authorize execution.
+- Hosted authenticated journal code is published but save/reload with a signed-in account has NOT been verified. Platform returned ready without runtime errors but no complete e2e suite result. Do not claim full E2E acceptance.
+- Added SQLite execution intent reservation, duplicate suppression after timeout/restart, immutable-intent conflict detection and protection/ledger gates. Tested only with fake exchange gateways. STOP/LADDER are rejected explicitly pending complete adapters.
+- Validation: build + 97 JS tests, 6 Python tests, lint and safety validator passed. Freshness is evaluated after request completion; closed-candle/no-lookahead and invalid-source cases covered.
+- Full master specification remains incomplete: normalized production ledger, autonomous data runner, live execution/reconciliation/protection, Guardian streams, durable Telegram, native drawings and complete acceptance. Main update still subject to the prior approval rejection; code is preserved in PR #87.

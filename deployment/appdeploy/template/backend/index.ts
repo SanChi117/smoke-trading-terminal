@@ -1,7 +1,9 @@
 import { router, json, error } from '@appdeploy/sdk';
+import { observationRoutes } from './observations';
 
 const intervals = new Set(['1M', '1w', '1d', '4h', '1h', '15m', '5m', '1m']);
 export const handler = router({
+  ...observationRoutes,
   'GET /api/market': [
     async ({ query }) => {
       const path = query.request ?? '';
