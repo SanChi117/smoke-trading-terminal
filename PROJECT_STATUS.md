@@ -87,3 +87,11 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - Local production build and 137 JS tests passed; lint and focused runtime typecheck passed. All new account transport tests are mocked; no private requests/orders were sent. Published AppDeploy UI unchanged.
 - Confirmed remote terminal-ci run 35775852034 failed because Node 22.13 lacks the SQLite backup export. The same commit's level-flow-ci and logic audit passed. Raised the declared minimum to Node 22.16 (or 24+) and aligned terminal-ci; added its runtime type gate. Remote CI verification of the correction is pending publication.
 - Full master acceptance remains incomplete; production position streams, protective order placement, normalized fill/fee/PnL ledger and end-to-end live/UI/VPS acceptance are not claimed complete.
+
+## 2026-09-25 durable protective-stop lifecycle
+
+- Prior checkpoint `e1bf9ea` is now green in all three remote workflows: terminal-ci, level-flow-ci and historical logic audit.
+- Added isolated conditional STOP_MARKET submission/query/exact cancellation adapters and durable lifecycle storage. Replacement submits and independently queries the new reduce-only stop before canceling its registered predecessor. No cancel-all path exists. Claims, uncertainty and evidence survive restart; lost acknowledgements never cause blind submit/cancel retries.
+- Immutable plan/account/position/research bindings, monotonic remote state, symbol ownership, long/short no-loosening, complete fresh exposure checks and action allow/deny policy are enforced. Every maintenance attempt pauses new entries. Research intents cannot dispatch; no production process invokes the new service.
+- Validation: production build + 145 tests passed, then two additional short/triggered-state tests passed (147 total); lint and focused runtime typecheck passed. Mock transports only; no private requests or real orders.
+- This is not complete live acceptance: exchange tick/lot validation, multi-position ownership snapshots, position retirement, triggered child-order/fill recovery and production user-stream coordination still need integration. Account labels remain configured assertions. SQLite audit is durable, but production PostgreSQL trade/fill/fee/PnL normalization and remaining UI/VPS acceptance are still open. Published site and frozen V5/QFVG unchanged.

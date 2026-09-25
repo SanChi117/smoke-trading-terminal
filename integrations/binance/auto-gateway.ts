@@ -1,3 +1,4 @@
+import type { StopOrder, StopRemote } from "../../services/execution/protective-stop.ts";
 import type { AutoExecutionGateway, SubmitOrder } from "../../services/execution/engine.ts";
 
 import type { OrderLookup, RemoteOrder } from "../../services/execution/reconcile-intents.ts";
@@ -29,6 +30,30 @@ export class BinanceAutoGateway implements AutoExecutionGateway, OrderLookup {
       averagePrice: Number(payload.avgPrice), updateTime: Number(payload.updateTime) });
   }
 
+  async submitStop(order: StopOrder): Promise<StopRemote> {
+    stopId(order.clientOrderId);
+    if (!/^[A-Z0-9]{5,20}$/.test(order.symbol) || !['BUY','SELL'].includes(order.side) || !Number.isFinite(order.quantity) || order.quantity <= 0 || !Number.isFinite(order.triggerPrice) || order.triggerPrice <= 0) throw new Error('INVALID_STOP_ORDER');
+    return stopPayload(await this.signed('POST', '/fapi/v1/algoOrder', {
+      algoType:'CONDITIONAL',symbol:order.symbol,side:order.side,type:'STOP_MARKET',positionSide:'BOTH',
+      quantity:String(order.quantity),triggerPrice:String(order.triggerPrice),workingType:'MARK_PRICE',reduceOnly:'true',clientAlgoId:order.clientOrderId,
+    }));
+  }
+
+  async lookupStop(clientOrderId: string): Promise<StopRemote> {
+    stopId(clientOrderId);
+    const result=stopPayload(await this.signed('GET','/fapi/v1/algoOrder',{clientAlgoId:clientOrderId}));
+    if(result.clientOrderId!==clientOrderId)throw new Error('BINANCE_STOP_IDENTITY_MISMATCH');
+    return result;
+  }
+
+  async cancelStop(clientOrderId: string): Promise<void> {
+    stopId(clientOrderId);
+    const value=await this.signed('DELETE','/fapi/v1/algoOrder',{clientAlgoId:clientOrderId});
+    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('BINANCE_INVALID_CANCEL_ACK');
+    const result=value as Record<string,unknown>;
+    if(String(result.code)!=='200'||result.clientAlgoId!==clientOrderId)throw new Error('BINANCE_INVALID_CANCEL_ACK');
+  }
+
   async openOrders(symbol?: string): Promise<readonly Record<string, unknown>[]> {
     const result = await this.signed("GET", "/fapi/v1/openOrders", symbol ? { symbol } : {});
     if (!Array.isArray(result)) throw new Error("BINANCE_INVALID_ACCOUNT_RESPONSE");
@@ -53,7 +78,7 @@ export class BinanceAutoGateway implements AutoExecutionGateway, OrderLookup {
     return result;
   }
 
-  private async signed(method: "GET" | "POST", path: string, values: Record<string, string>): Promise<unknown> {
+  private async signed(method: "GET" | "POST" | "DELETE", path: string, values: Record<string, string>): Promise<unknown> {
     if (!this.config.apiKey || !this.config.secretKey) throw new Error("BINANCE_AUTO_NOT_CONFIGURED");
     const params = new URLSearchParams({ ...values, recvWindow: String(this.config.recvWindow ?? 5000), timestamp: String(Date.now()) });
     params.set("signature", await hmac(params.toString(), this.config.secretKey));
@@ -73,4 +98,13 @@ async function hmac(payload: string, secret: string): Promise<string> {
 function objectPayload(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value) || "code" in value) throw new Error("BINANCE_INVALID_RESPONSE");
   return value as Record<string, unknown>;
+}
+
+function stopId(id:string){if(!/^smoke-[A-Za-z0-9_-]{1,30}$/.test(id))throw new Error('INVALID_STOP_ID');}
+function stopPayload(value:unknown):StopRemote {
+ const p=objectPayload(value);
+ const numeric=(v:unknown)=>{if((typeof v!=='string'&&typeof v!=='number')||String(v).trim()===''||!Number.isFinite(Number(v)))throw new Error('BINANCE_INVALID_STOP_NUMBER');return Number(v);};
+ const bool=(v:unknown)=>{if(v===true||v==='true')return true;if(v===false||v==='false')return false;throw new Error('BINANCE_INVALID_STOP_BOOLEAN');};
+ if(typeof p.clientAlgoId!=='string'||typeof p.symbol!=='string'||!['BUY','SELL'].includes(String(p.side))||p.algoType!=='CONDITIONAL'||(typeof p.algoId==='number'&&!Number.isSafeInteger(p.algoId))||!/^\d+$/.test(String(p.algoId)))throw new Error('BINANCE_INVALID_STOP_RESPONSE');
+ return {clientOrderId:p.clientAlgoId,symbol:p.symbol,side:p.side as 'BUY'|'SELL',exchangeOrderId:String(p.algoId),quantity:numeric(p.quantity),triggerPrice:numeric(p.triggerPrice),updateTime:numeric(p.updateTime),status:String(p.algoStatus),type:String(p.orderType),positionSide:String(p.positionSide),workingType:String(p.workingType),reduceOnly:bool(p.reduceOnly),closePosition:bool(p.closePosition)};
 }

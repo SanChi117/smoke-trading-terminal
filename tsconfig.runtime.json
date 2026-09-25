@@ -14,7 +14,8 @@
     "research/replay/guardian-comparison.ts",
     "services/exit-guardian/fast-pipeline.ts",
     "services/execution/reconcile-protection.ts",
-    "services/execution/collect-protection.ts"
+    "services/execution/collect-protection.ts",
+    "services/execution/protective-stop.ts"
   ],
   "exclude": [
     "node_modules",
