@@ -13,6 +13,7 @@ export type TradePlanInput = {
   mechanism: string;
   entryMethod: "MARKET" | "LIMIT" | "STOP" | "LADDER";
   entryPrices: number[];
+  maxEntrySlippageBps?: number;
   naturalInvalidation: string;
   initialStop: number;
   exitMode: string;
@@ -32,6 +33,7 @@ export type TradePlan = Readonly<TradePlanInput & { revision: 1; decision: "TRAD
 export function compileTradePlan(input: TradePlanInput): TradePlan {
   if (!input.planId || !input.decisionId || !input.dataSnapshotId) throw new Error("MISSING_CAUSAL_ID");
   const symbol = normalizeSymbol(input.symbol);
+  if (input.maxEntrySlippageBps !== undefined && (!Number.isFinite(input.maxEntrySlippageBps) || input.maxEntrySlippageBps < 0 || input.maxEntrySlippageBps >= 10000)) throw new Error("INVALID_ENTRY_SLIPPAGE");
   if (!['LONG', 'SHORT'].includes(input.side)) throw new Error('INVALID_SIDE');
   if (!['MARKET', 'LIMIT', 'STOP', 'LADDER'].includes(input.entryMethod)) throw new Error('INVALID_ENTRY_METHOD');
   if (!input.entryPrices.length || input.entryPrices.some((price) => !Number.isFinite(price) || price <= 0)) throw new Error("INVALID_ENTRY");

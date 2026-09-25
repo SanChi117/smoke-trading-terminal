@@ -13,7 +13,7 @@ export class BinanceAutoGateway implements AutoExecutionGateway, OrderLookup {
   async submit(order: SubmitOrder): Promise<Readonly<{ exchangeOrderId: string; status: string }>> {
     if (!order.clientOrderId.startsWith("smoke-")) throw new Error("AUTO_ORDER_NAMESPACE_REQUIRED");
     const params: Record<string, string> = { symbol: order.symbol, side: order.side, type: order.type, quantity: String(order.quantity), newClientOrderId: order.clientOrderId };
-    if (order.type === "LIMIT") Object.assign(params, { price: String(order.price), timeInForce: "GTC" });
+    if (order.type === "LIMIT") Object.assign(params, { price: String(order.price), timeInForce: order.timeInForce ?? "GTC" });
     if (order.reduceOnly) params.reduceOnly = "true";
     const payload = objectPayload(await this.signed("POST", "/fapi/v1/order", params));
     if (!payload.orderId || typeof payload.status !== "string") throw new Error("BINANCE_INVALID_ACK");

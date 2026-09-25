@@ -95,3 +95,10 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - Immutable plan/account/position/research bindings, monotonic remote state, symbol ownership, long/short no-loosening, complete fresh exposure checks and action allow/deny policy are enforced. Every maintenance attempt pauses new entries. Research intents cannot dispatch; no production process invokes the new service.
 - Validation: production build + 145 tests passed, then two additional short/triggered-state tests passed (147 total); lint and focused runtime typecheck passed. Mock transports only; no private requests or real orders.
 - This is not complete live acceptance: exchange tick/lot validation, multi-position ownership snapshots, position retirement, triggered child-order/fill recovery and production user-stream coordination still need integration. Account labels remain configured assertions. SQLite audit is durable, but production PostgreSQL trade/fill/fee/PnL normalization and remaining UI/VPS acceptance are still open. Published site and frozen V5/QFVG unchanged.
+
+## 2026-09-25 bounded immediate-entry adapter
+
+- MARKET plans now require an explicit immutable `maxEntrySlippageBps`, a fresh matching server/replay bid-ask quote and a tick size. The shared compiler emits an IOC LIMIT with a directional price boundary; no remainder is blindly retried. Missing or invalid evidence fails closed in both observe and live modes.
+- Preserved original MARKET plan provenance in the durable journal and legacy LIMIT order serialization. Rechecked quote/plan freshness after reservation; expiry leaves a durable lock and sends nothing. Forbidden SUBMIT_ENTRY now wins over allowedActions.
+- Production build + 153 JS tests, focused runtime typecheck and lint passed. No actual exchange requests. Immediate fills remain subject to liquidity: partial/no fill is expected, and short-side favorable price improvement means the sizing estimate is not proof of a strict post-fill margin cap.
+- STOP/LADDER entry, production quote/filter/account coordination, normalized fills/costs and remaining UI/VPS acceptance are still open. Published UI unchanged.

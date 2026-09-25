@@ -1,5 +1,6 @@
 export type ExchangeQuantityRules = Readonly<{
   stepSize: number;
+  tickSize?: number;
   minQty: number;
   maxQty: number;
   minNotional: number;
