@@ -2,7 +2,7 @@ import { compileTradePlan, type TradePlan } from '../../core/contracts/trade-pla
 
 export type ExpectedExposure = Readonly<{positionId:string;plan:TradePlan;quantity:number;stopClientOrderIds:readonly string[]}>;
 export type ProtectionSnapshot = Readonly<{
-  snapshotId:string;accountId:string;observedAt:number;complete:boolean;
+  snapshotId:string;accountId:string;observedAt:number;complete:boolean;source?:string;failureReason?:string;
   positions:readonly {symbol:string;positionSide:string;signedQuantity:number;markPrice:number}[];
   stops:readonly {clientOrderId:string;symbol:string;side:string;status:string;type:string;positionSide:string;workingType:string;triggerPrice:number;quantity:number;reduceOnly:boolean;closePosition:boolean}[];
 }>;
@@ -18,6 +18,7 @@ export function reconcilePositionProtection(snapshot:ProtectionSnapshot, expecte
   if(!Array.isArray(snapshot.positions)||!Array.isArray(snapshot.stops)||snapshot.positions.length>500||snapshot.stops.length>1000||expected.length>100)throw new Error('INVALID_PROTECTION_BATCH');
   if(context.isolatedAutoAccount!==true||!context.accountId||snapshot.accountId!==context.accountId)issues.push('ACCOUNT_NOT_ISOLATED_OR_MISMATCHED');
   if(snapshot.complete!==true||!Number.isSafeInteger(snapshot.observedAt)||snapshot.observedAt>now||now-snapshot.observedAt>5000)issues.push('INCOMPLETE_OR_STALE_ACCOUNT_SNAPSHOT');
+  if(snapshot.failureReason)issues.push(snapshot.failureReason);
   const symbols=new Set<string>(),positionIds=new Set<string>(),stopIds=new Set<string>();
   for(const local of expected){
     let valid=true;

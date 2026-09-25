@@ -35,6 +35,18 @@ export class BinanceAutoGateway implements AutoExecutionGateway, OrderLookup {
     return result;
   }
 
+  async openAlgoOrders(): Promise<readonly Record<string, unknown>[]> {
+    const result = await this.signed("GET", "/fapi/v1/openAlgoOrders", {});
+    if (!Array.isArray(result)) throw new Error("BINANCE_INVALID_ALGO_RESPONSE");
+    return result;
+  }
+
+  async positionMode(): Promise<boolean> {
+    const result = objectPayload(await this.signed("GET", "/fapi/v1/positionSide/dual", {}));
+    if (typeof result.dualSidePosition !== "boolean") throw new Error("BINANCE_INVALID_POSITION_MODE");
+    return result.dualSidePosition;
+  }
+
   async positions(): Promise<readonly Record<string, unknown>[]> {
     const result = await this.signed("GET", "/fapi/v3/positionRisk", {});
     if (!Array.isArray(result)) throw new Error("BINANCE_INVALID_ACCOUNT_RESPONSE");

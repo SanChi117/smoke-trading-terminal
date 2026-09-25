@@ -54,7 +54,7 @@ Pending, cancelled and expired records do not count as closed trades. The gate r
 
 ## Run locally
 
-Requirements: Node.js 22.13+ and Python 3.11+.
+Requirements: Node.js 22.16+ (22.x) or 24+ and Python 3.11+.
 
 ```bash
 npm ci

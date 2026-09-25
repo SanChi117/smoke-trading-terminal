@@ -37,3 +37,38 @@ test('short close-position stop is accepted; duplicate protection and changed sn
  assert.equal(store.db.prepare('SELECT entries_paused FROM runtime_control').get().entries_paused,1);
  assert.equal(reconcilePositionProtection({...value,snapshotId:'dupe',stops:[...value.stops,...value.stops]},[short],context,store).mode,'SAFE_MODE');
 });
+
+test('signed account collector brackets exposure and uses conditional-order endpoint without writes',async t=>{
+ const {BinanceAutoGateway}=await import('../integrations/binance/auto-gateway.ts');
+ const {reconcileProtectionFromExchange}=await import('../services/execution/collect-protection.ts');
+ const store=fixture(t),calls=[];
+ const gateway=new BinanceAutoGateway({apiKey:'fake',secretKey:'fake',baseUrl:'https://example.test'},async(url,options)=>{
+  const path=new URL(url).pathname;calls.push({path,method:options.method});
+  const value=path.includes('positionRisk')?[{symbol:'BTCUSDT',positionSide:'BOTH',positionAmt:'1',markPrice:'100'}]
+   :path.includes('positionSide')?{dualSidePosition:false}
+   :path.includes('openAlgoOrders')?[{algoType:'CONDITIONAL',clientAlgoId:'smoke-stop',symbol:'BTCUSDT',side:'SELL',algoStatus:'NEW',orderType:'STOP_MARKET',positionSide:'BOTH',workingType:'MARK_PRICE',triggerPrice:'95',quantity:'1',reduceOnly:true,closePosition:false}]:[];
+  return new Response(JSON.stringify(value));
+ });
+ const result=await reconcileProtectionFromExchange(gateway,[local],store,{accountId:'auto',isolatedAutoAccount:true,now:()=>2000});
+ assert.equal(result.mode,'PROTECTION_VERIFIED');assert.equal(result.input.snapshot.source,'BRACKETED_REST');
+ assert.equal(calls.length,6);assert.ok(calls.every(c=>c.method==='GET'));assert.equal(calls.filter(c=>c.path==='/fapi/v3/positionRisk').length,2);
+ assert.ok(calls.some(c=>c.path==='/fapi/v1/openAlgoOrders'));
+});
+test('collector failures, hedge mode and changing exposure durably pause new entries',async t=>{
+ const {reconcileProtectionFromExchange}=await import('../services/execution/collect-protection.ts');
+ const store=fixture(t);
+ const row={symbol:'BTCUSDT',positionSide:'BOTH',positionAmt:'1',markPrice:'100'};
+ for(const scenario of ['timeout','changed','hedge','open','slow','malformed']){
+  store.db.exec('UPDATE runtime_control SET entries_paused=0');let reads=0,clock=2000;
+  const gateway={positions:async()=>{reads++;if(scenario==='timeout')throw new Error('secret URL must never be logged');return [{...row,positionAmt:scenario==='changed'&&reads===2?'2':'1'}];},positionMode:async()=>scenario==='hedge',openAlgoOrders:async()=>scenario==='malformed'?[{quantity:null}]:[],openOrders:async()=>{if(scenario==='slow')clock+=6000;return scenario==='open'?[{clientOrderId:'manual'}]:[];}};
+  const result=await reconcileProtectionFromExchange(gateway,[local],store,{accountId:'auto',isolatedAutoAccount:true,now:()=>clock});
+  assert.equal(result.mode,'SAFE_MODE',scenario);assert.equal(store.db.prepare('SELECT entries_paused FROM runtime_control').get().entries_paused,1);
+  assert.doesNotMatch(JSON.stringify(result),/secret URL/);
+ }
+});
+test('non-isolated account is rejected before any private request',async t=>{
+ const {reconcileProtectionFromExchange}=await import('../services/execution/collect-protection.ts');
+ const store=fixture(t);let calls=0;const read=async()=>{calls++;throw new Error('must not run');};
+ const result=await reconcileProtectionFromExchange({positions:read,openAlgoOrders:read,openOrders:read,positionMode:read},[local],store,{accountId:'auto',isolatedAutoAccount:false,now:()=>2000});
+ assert.equal(result.mode,'SAFE_MODE');assert.equal(calls,0);
+});

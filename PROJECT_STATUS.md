@@ -79,3 +79,11 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - Durable audit and mismatch-induced entry pause commit together. Changed snapshot content fails closed and pauses; successful verification cannot resume entries. Expired entry plans do not remove protection obligations for existing positions.
 - Build and 134 JS tests passed. New cases cover inadequate partial-fill coverage, wrong side/stop/reference, unknown ownership, stale/incomplete/missing positions, short close-position protection, duplicate orders and conflicting snapshots.
 - Authenticated position/conditional-order snapshot collection, stop placement/acknowledgement and production runtime wiring remain open. This core alone is not live protection acceptance. No real/private exchange requests made; published UI unchanged.
+
+## 2026-09-25 account collector and CI repair
+
+- Saved the prior protection-core checkpoint to review commit `142f3da` (local `805a605`).
+- Added signed read-only position/conditional-order/regular-order/mode collection and a bounded reconciliation CLI. Exposure is compared before/after collection. Slow, malformed, changing, hedge or outstanding-order snapshots fail closed and persist the pause. Account identity remains a configured owner-verified binding; this REST poll does not replace user-data streams or protective-order acknowledgements.
+- Local production build and 137 JS tests passed; lint and focused runtime typecheck passed. All new account transport tests are mocked; no private requests/orders were sent. Published AppDeploy UI unchanged.
+- Confirmed remote terminal-ci run 35775852034 failed because Node 22.13 lacks the SQLite backup export. The same commit's level-flow-ci and logic audit passed. Raised the declared minimum to Node 22.16 (or 24+) and aligned terminal-ci; added its runtime type gate. Remote CI verification of the correction is pending publication.
+- Full master acceptance remains incomplete; production position streams, protective order placement, normalized fill/fee/PnL ledger and end-to-end live/UI/VPS acceptance are not claimed complete.

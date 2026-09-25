@@ -18,7 +18,7 @@
 
 Restart in `AUTO_OBSERVE`, reconcile Binance AUTO orders and positions, inspect the causal ledger, then clear SAFE MODE only after every blocking health signal is fresh. Never infer exchange state from the local database alone.
 
-## Durable challenger observation (Node 22.13+)
+## Durable challenger observation (Node 22.16+ / 24+)
 
 Run `node --experimental-strip-types scripts/observe-cycle.mjs input.json ledger.sqlite`.
 The input contains `{ snapshot: BrainFeatureSnapshot, portfolio: PortfolioContext }` using
@@ -172,3 +172,32 @@ never releases a pause or authorizes entry. Manual/unknown exposure is reported 
 modifying/canceling anything. This is a tested reconciliation core, not an authenticated
 Binance snapshot collector or protective-order placement adapter; those integrations remain
 open and AUTO-LIVE stays disabled.
+
+## Binance position/protection collector
+
+`reconcile-protection.mjs EXISTING_LEDGER.sqlite expected-exposures.json` now runs the
+read-only collector with the signed Binance gateway. It uses all-account position risk,
+conditional open orders, regular open orders and position mode. Positions/mode are read
+before and after orders; exposure changes, hedge mode, outstanding regular orders, malformed
+responses or collection longer than five seconds produce SAFE_MODE and persist an entry pause.
+No submit/cancel endpoint is called. The expected-exposures file is a bounded array of
+`ExpectedExposure` records from the local plan/fill ledger, not a list inferred from namespaces.
+
+Additional server configuration is `SMOKE_AUTO_ACCOUNT_ID`, the local name bound by the
+operator to these AUTO credentials. Binance position risk responses do not independently
+prove that local account label. Isolation and credential/account binding still require owner
+verification. `BRACKETED_REST` is a bounded polling check, not an atomic exchange snapshot:
+stream reconciliation and protection placement/acknowledgements remain necessary before live.
+The command never resumes entries, even when the observed positions have valid coverage.
+
+API contracts checked 2026-09-25 in the official USD-M REST trade/account references:
+https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/trade
+https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/rest-api/account
+
+## CI runtime correction
+
+GitHub terminal-ci run 35775852034 failed in its web job because Node 22.13 cannot import
+`backup` from `node:sqlite`. The same commit passed level-flow-ci on Node 22.16. Node's
+backup API was added in 22.16; the project engine requirement, lockfile metadata and terminal
+CI now match that minimum. The terminal workflow also runs the focused runtime typecheck.
+Source: https://nodejs.org/api/sqlite.html#sqlitebackupsourceDb-path-options

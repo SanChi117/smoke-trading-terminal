@@ -7,7 +7,7 @@ The earlier guide's instruction to enable live after Docker startup was prematur
 
 ## Install and verify
 
-Use a Linux host with Node >=22.13, UTC clock synchronization, outbound HTTPS to the
+Use a Linux host with Node 22.16+ (22.x) or 24+, UTC clock synchronization, outbound HTTPS to the
 public data source and enough persistent disk for the SQLite WAL journal. Check out the
 reviewed release from this existing repository. Current changes are in draft PR #87;
 main has not been updated because the previous default-branch update was rejected.
