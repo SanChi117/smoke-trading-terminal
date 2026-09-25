@@ -155,3 +155,20 @@ Payload contracts checked against official USD-M market/public stream references
 2026-09-22:
 https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/ws-streams/market
 https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/ws-streams/public
+
+## Position/protection reconciliation core
+
+`reconcilePositionProtection` compares a complete authenticated AUTO-account snapshot
+with locally registered immutable plans, actual filled quantities and exact protective
+client IDs. A prefix alone does not establish stop ownership. The current contract
+supports one-way positions and MARK_PRICE STOP_MARKET protection; hedge mode, ambiguous
+local allocation and unsupported trigger references fail closed. Protection must cover
+the whole current quantity and may not loosen the initial stop. An expired entry plan
+still protects its existing position.
+
+`ProtectionStore` records the causal snapshot and result atomically with the shared entry
+pause on mismatch. A conflicting snapshot ID also pauses entries. Successful verification
+never releases a pause or authorizes entry. Manual/unknown exposure is reported without
+modifying/canceling anything. This is a tested reconciliation core, not an authenticated
+Binance snapshot collector or protective-order placement adapter; those integrations remain
+open and AUTO-LIVE stays disabled.

@@ -72,3 +72,10 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - Research provenance is immutable in the position binding. Research exit intents have their own locked state and cannot pass live dispatch or private-order reconciliation. This is a challenger with synthetic cases, not a promoted production classifier or proof of trading edge.
 - Verification: full production build and 130 JS tests passed; focused runtime typecheck and lint passed. Actual streaming transport/position ownership, automatic reconnect scheduling, parameter calibration on captured positive/negative market cases and resource/retention acceptance remain outstanding. No live orders/private exchange calls or Telegram messages sent; V5/QFVG unchanged.
 - This extends the previous checkpoint; full master acceptance is still incomplete. Remaining production account/protection/ledger/UI/VPS items above remain open. Published AppDeploy site unchanged.
+
+## 2026-09-22 position protection reconciliation checkpoint
+
+- Added read-only comparison of actual one-way AUTO exposure against immutable local plans and exact registered stop IDs. Requires complete/fresh account data, matching side and quantity, active MARK_PRICE STOP_MARKET coverage and a stop no weaker than initial invalidation. Unknown/manual exposure is flagged without mutation.
+- Durable audit and mismatch-induced entry pause commit together. Changed snapshot content fails closed and pauses; successful verification cannot resume entries. Expired entry plans do not remove protection obligations for existing positions.
+- Build and 134 JS tests passed. New cases cover inadequate partial-fill coverage, wrong side/stop/reference, unknown ownership, stale/incomplete/missing positions, short close-position protection, duplicate orders and conflicting snapshots.
+- Authenticated position/conditional-order snapshot collection, stop placement/acknowledgement and production runtime wiring remain open. This core alone is not live protection acceptance. No real/private exchange requests made; published UI unchanged.

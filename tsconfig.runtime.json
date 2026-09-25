@@ -12,7 +12,8 @@
     "integrations/telegram/durable.ts",
     "integrations/telegram/poll.ts",
     "research/replay/guardian-comparison.ts",
-    "services/exit-guardian/fast-pipeline.ts"
+    "services/exit-guardian/fast-pipeline.ts",
+    "services/execution/reconcile-protection.ts"
   ],
   "exclude": [
     "node_modules",
