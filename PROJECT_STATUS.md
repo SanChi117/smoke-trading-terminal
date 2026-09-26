@@ -102,3 +102,11 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - Preserved original MARKET plan provenance in the durable journal and legacy LIMIT order serialization. Rechecked quote/plan freshness after reservation; expiry leaves a durable lock and sends nothing. Forbidden SUBMIT_ENTRY now wins over allowedActions.
 - Production build + 153 JS tests, focused runtime typecheck and lint passed. No actual exchange requests. Immediate fills remain subject to liquidity: partial/no fill is expected, and short-side favorable price improvement means the sizing estimate is not proof of a strict post-fill margin cap.
 - STOP/LADDER entry, production quote/filter/account coordination, normalized fills/costs and remaining UI/VPS acceptance are still open. Published UI unchanged.
+
+## 2026-09-26 normalized fill accounting checkpoint
+
+- Remote checkpoint `31d1721` passed all three workflows: terminal-ci, level-flow-ci and historical logic audit.
+- Added normalized SQLite order/fill accounting bound to persisted entry intents and Guardian exit evidence. Account/symbol/trade identity is scoped correctly; decimal quantities, realized PnL and fee amounts use exact fixed-point arithmetic. Canonically identical duplicates do not double count; conflicting records and overfills roll back the entire batch.
+- Fees remain in their actual asset. A non-USDT fee prevents reporting a fabricated all-in USDT result. Reports explicitly cover imported fills only, exclude funding/AI costs/unimported fills/unrealized PnL and remain incomplete. No order ACK is treated as a fill.
+- Verified real SQLite backup/restore and duplicate rejection after recovery, immutable account/order binding, unknown fills, Guardian causal joins and malformed decimal inputs. Production build, 153 main JS tests plus six accounting tests (159 total), six Python tests, safety validator, lint and focused runtime typecheck passed.
+- No private API requests/orders/messages. This is accounting storage and validation, not automated exchange fill collection, full position PnL or a deployed PostgreSQL service. Triggered stop child-order binding, funding/AI-cost ingestion, pagination/completeness and production integration remain open. Published UI unchanged; AUTO-LIVE disabled.
