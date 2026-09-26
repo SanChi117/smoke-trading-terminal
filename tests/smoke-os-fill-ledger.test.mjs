@@ -10,6 +10,8 @@ import {GuardianStore} from '../core/ledger/guardian-store.mjs';
 import {evaluateGuardian,dispatchGuardian} from '../services/exit-guardian/runtime.ts';
 import {compileTradePlan} from '../core/contracts/trade-plan.ts';
 import {canonicalDecimal,numberDecimal} from '../core/ledger/decimal.mjs';
+import {collectOrderFills} from '../services/execution/collect-fills.mjs';
+import {BinanceAutoGateway} from '../integrations/binance/auto-gateway.ts';
 const plan=compileTradePlan({planId:'p',decisionId:'d',symbol:'BTCUSDT',side:'LONG',marketRegime:'TREND',winningBrain:'TREND',mechanism:'test',entryMethod:'LIMIT',entryPrices:[100],initialStop:95,naturalInvalidation:'support',exitMode:'GUARDIAN',marginCapUsdt:1,leverage:1,allowedActions:['SUBMIT_ENTRY','EMERGENCY_CLOSE'],forbiddenActions:['TOUCH_MANUAL'],expiresAt:3000,createdAt:1,sourceVersions:{test:'1'},dataSnapshotId:'s'});
 const order={clientOrderId:'smoke-entry',symbol:'BTCUSDT',side:'BUY',type:'LIMIT',price:100,quantity:0.3,reduceOnly:false};
 const fill={symbol:'BTCUSDT',tradeId:'1',exchangeOrderId:'10',side:'BUY',quantity:'0.1',price:'100',realizedPnl:'0',fee:'0.01',feeAsset:'USDT',exchangeTime:2000};
@@ -53,4 +55,36 @@ test('Guardian exit fills join the original plan without changing entry facts',a
  store.importFills('auto',[fill,{...fill,tradeId:'2',exchangeOrderId:'20',side:'SELL',quantity:'0.3',price:'105',realizedPnl:'1.5',fee:'0.02'}]);
  const result=store.summary('auto','p');assert.equal(result.reportedRealizedPnlUsdt,'1.5');assert.equal(result.netAfterRecordedFeesUsdt,'1.47');
  assert.throws(()=>store.bindGuardian('manual',position.positionId,{isolatedAutoAccount:true}),/MISMATCH/);
+});
+const remote={clientOrderId:'smoke-entry',exchangeOrderId:'10',symbol:'BTCUSDT',side:'BUY',originalQuantity:0.3,executedQuantity:0.3,updateTime:2000,status:'FILLED'};
+const raw={symbol:'BTCUSDT',id:1,orderId:10,side:'BUY',positionSide:'BOTH',qty:'0.3',price:'100',realizedPnl:'0',commission:'0.01',commissionAsset:'USDT',marginAsset:'USDT',time:2000};
+const collection={accountId:'auto',clientOrderId:'smoke-entry',isolatedAutoAccount:true,now:()=>2001};
+test('read-only collector uses persisted ownership and exact signed order-scoped requests',async t=>{
+ const {store}=await setup(t);const methods=[];
+ const gateway=new BinanceAutoGateway({apiKey:'fake',secretKey:'fake'},async(url,options)=>{
+  const u=new URL(url);methods.push(options.method);assert.ok(u.searchParams.get('signature'));
+  if(u.pathname.endsWith('userTrades')){assert.equal(u.searchParams.get('orderId'),'10');assert.equal(u.searchParams.get('fromId'),'0');return Response.json([raw]);}
+  return Response.json({...remote,orderId:10,origQty:'0.3',executedQty:'0.3',avgPrice:'100'});
+ });
+ const result=await collectOrderFills(store,gateway,collection);assert.equal(result.state,'RECORDED_QUANTITY_MATCH');assert.equal(result.complete,false);assert.deepEqual(methods,['GET','GET','GET']);
+ assert.equal((await collectOrderFills(store,gateway,collection)).inserted,0);
+});
+test('pagination keeps int64 IDs exact and partial page limit never claims completeness',async t=>{
+ const {store}=await setup(t),base=9007199254740993n,cursors=[];
+ const page=Array.from({length:1000},(_,i)=>({...raw,id:String(base+BigInt(i)),qty:'0.0001',commission:'0'}));
+ const gateway={lookup:async()=>remote,orderTrades:async(_symbol,_order,cursor)=>{cursors.push(cursor);return cursor==='0'?page:[{...raw,id:String(base+1000n),qty:'0.2'}];}};
+ assert.equal((await collectOrderFills(store,gateway,{...collection,maxPages:1})).state,'RECONCILIATION_REQUIRED');
+ const result=await collectOrderFills(store,gateway,collection);assert.equal(result.state,'RECORDED_QUANTITY_MATCH');assert.equal(result.inserted,1);assert.equal(cursors.at(-1),String(base+1000n));
+});
+test('malformed, wrong-order and unordered pages do not partially enter ledger',async t=>{
+ const {store}=await setup(t);
+ for(const rows of [[{...raw,id:9007199254740992}],[{...raw,orderId:11}],[{...raw,positionSide:'LONG'}],[{...raw,id:2,qty:'0.1'},{...raw,id:1,qty:'0.1'}]]){
+  await assert.rejects(collectOrderFills(store,{lookup:async()=>remote,orderTrades:async()=>rows},collection));assert.equal(store.summary('auto','p').fillCount,0);
+ }
+ let calls=0;await assert.rejects(collectOrderFills(store,{lookup:async()=>{calls++;return remote;}},{...collection,isolatedAutoAccount:false}));assert.equal(calls,0);
+});
+test('changing exchange execution or missing historical fills stays unresolved',async t=>{
+ const {store}=await setup(t);let calls=0;
+ const changed=await collectOrderFills(store,{lookup:async()=>({...remote,updateTime:2000+calls++}),orderTrades:async()=>[raw]},collection);assert.equal(changed.state,'RECONCILIATION_REQUIRED');
+ await assert.rejects(collectOrderFills(store,{lookup:async()=>({...remote,symbol:'ETHUSDT'}),orderTrades:async()=>[]},collection),/MISMATCH/);
 });

@@ -60,6 +60,13 @@ export class BinanceAutoGateway implements AutoExecutionGateway, OrderLookup {
     return result;
   }
 
+  async orderTrades(symbol: string, exchangeOrderId: string, fromId: string): Promise<readonly Record<string, unknown>[]> {
+    if (!/^[A-Z0-9]{5,20}$/.test(symbol) || !/^\d{1,20}$/.test(exchangeOrderId) || !/^\d{1,20}$/.test(fromId)) throw new Error('INVALID_TRADE_LOOKUP');
+    const result = await this.signed('GET', '/fapi/v1/userTrades', {symbol,orderId:exchangeOrderId,fromId,limit:'1000'});
+    if (!Array.isArray(result) || result.length > 1000) throw new Error('BINANCE_INVALID_TRADE_RESPONSE');
+    return result;
+  }
+
   async openAlgoOrders(): Promise<readonly Record<string, unknown>[]> {
     const result = await this.signed("GET", "/fapi/v1/openAlgoOrders", {});
     if (!Array.isArray(result)) throw new Error("BINANCE_INVALID_ALGO_RESPONSE");

@@ -66,5 +66,13 @@ export class FillStore {
   const foreign=Object.entries(fees).some(([asset,value])=>asset!=='USDT'&&value!==0n);
   return {accountId,planId,coverage:'IMPORTED_FILLS_ONLY',fillCount:rows.length,reportedRealizedPnlUsdt:decimalText(gross),feesByAsset:Object.fromEntries(Object.entries(fees).map(([asset,value])=>[asset,decimalText(value)])),netAfterRecordedFeesUsdt:foreign?null:decimalText(gross-(fees.USDT??0n)),excludes:['funding','unimported fills','AI cost','unrealized PnL'],complete:false};
  }
+ orderBinding(accountId,clientOrderId){
+  const row=this.db.prepare('SELECT evidence_json FROM accounting_orders WHERE account_id=? AND client_order_id=?').get(id(accountId),id(clientOrderId));
+  if(!row)throw new Error('UNKNOWN_ACCOUNTING_BINDING');return JSON.parse(row.evidence_json);
+ }
+ importedQuantity(accountId,symbol,exchangeOrderId){
+  const rows=this.db.prepare('SELECT quantity FROM accounting_fills WHERE account_id=? AND symbol=? AND exchange_order_id=?').all(accountId,symbol,exchangeOrderId);
+  return decimalText(rows.reduce((sum,row)=>sum+decimalUnits(row.quantity),0n));
+ }
  close(){this.db.close();}
 }
