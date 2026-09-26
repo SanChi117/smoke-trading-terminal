@@ -6,7 +6,13 @@ export type ArbiterDecision = Readonly<{ decision: "TRADE" | "WATCH" | "NO_TRADE
 export function validateArbiterDecision(value: unknown): value is ArbiterDecision {
   if (!value || typeof value !== "object") return false;
   const item = value as Record<string, unknown>;
-  return ["TRADE", "WATCH", "NO_TRADE"].includes(String(item.decision)) && Number.isFinite(item.confidence) && Number(item.confidence) >= 0 && Number(item.confidence) <= 100 && Array.isArray(item.rejectedHypotheses) && Array.isArray(item.evidence) && typeof item.invalidationThesis === "string" && typeof item.preferredExitMode === "string" && Array.isArray(item.whatWouldChangeMind);
+  const strings = (value: unknown) => Array.isArray(value) && value.every((entry) => typeof entry === "string");
+  const nullableString = (value: unknown) => value === null || typeof value === "string";
+  return ["TRADE", "WATCH", "NO_TRADE"].includes(String(item.decision)) && typeof item.confidence === "number" && Number.isFinite(item.confidence) && item.confidence >= 0 && item.confidence <= 100
+    && nullableString(item.winningBrain) && nullableString(item.winningMechanism)
+    && strings(item.rejectedHypotheses) && strings(item.evidence) && strings(item.whatWouldChangeMind)
+    && typeof item.invalidationThesis === "string" && typeof item.preferredExitMode === "string"
+    && (item.decision !== "TRADE" || (typeof item.winningBrain === "string" && item.winningBrain.length > 0 && typeof item.winningMechanism === "string" && item.winningMechanism.length > 0 && item.invalidationThesis.trim().length > 0));
 }
 
 export function deterministicArbiter(opinions: readonly BrainOpinion[], conflicts: readonly Conflict[]): ArbiterDecision {

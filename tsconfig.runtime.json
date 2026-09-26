@@ -1,0 +1,25 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "plugins": []
+  },
+  "include": [
+    "services/orchestrator/observation-runner.ts",
+    "services/exit-guardian/runtime.ts",
+    "services/execution/engine.ts",
+    "services/execution/reconcile-intents.ts",
+    "integrations/telegram/durable.ts",
+    "integrations/telegram/poll.ts",
+    "research/replay/guardian-comparison.ts",
+    "services/exit-guardian/fast-pipeline.ts",
+    "services/execution/reconcile-protection.ts",
+    "services/execution/collect-protection.ts",
+    "services/execution/protective-stop.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "deployment",
+    ".appdeploy-release"
+  ]
+}

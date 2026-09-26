@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
-import type { Candle, MtfLevelAnalysis, Timeframe } from "../lib/mtf-level-strategy";
+import type { Candle, MtfLevelAnalysis } from "../lib/mtf-level-strategy";
+import type { ChartTimeframe } from "../lib/binance-level-client";
 import type { JournalEntry } from "../lib/trading-journal";
 import styles from "./TerminalV6.module.css";
 
@@ -11,7 +12,7 @@ type Drawing =
   | { id:string; type:"trend"|"rect"|"fib"; a:{time:number;price:number}; b:{time:number;price:number} }
   | { id:string; type:"note"; time:number; price:number; text:string };
 type Indicator = "ema20"|"ema50"|"ema200"|"vwap"|"bollinger"|"rsi"|"atr"|"volume"|"zones"|"structure"|"trades";
-type Props={symbol:string;timeframe:Timeframe;candles:Candle[];analysis:MtfLevelAnalysis|null;journal:JournalEntry[];loading?:boolean};
+type Props={symbol:string;timeframe:ChartTimeframe;workspace?:string;candles:Candle[];analysis:MtfLevelAnalysis|null;journal:JournalEntry[];loading?:boolean};
 
 const W=1280,H=720,L=64,R=84,T=18,PB=535,VT=552,VB=620,RT=636,RB=700;
 const clamp=(v:number,a:number,b:number)=>Math.max(a,Math.min(b,v));
@@ -25,10 +26,10 @@ function fmt(v:number){if(v>=1000)return v.toLocaleString("en-US",{maximumFracti
 function nearest(c:Candle[],time:number){let best=0,d=Infinity;c.forEach((x,i)=>{const n=Math.abs(x.time-time);if(n<d){d=n;best=i}});return best}
 function path(values:number[],x:(i:number)=>number,y:(v:number)=>number){let d="",open=false;values.forEach((v,i)=>{if(!Number.isFinite(v)){open=false;return}d+=`${open?"L":"M"}${x(i)},${y(v)} `;open=true});return d}
 
-export default function ProLevelChart({symbol,timeframe,candles,analysis,journal,loading}:Props){
+export default function ProLevelChart({symbol,timeframe,workspace="Trading",candles,analysis,journal,loading}:Props){
  const[tool,setTool]=useState<Tool>("cursor"),[count,setCount]=useState(180),[offset,setOffset]=useState(0),[priceZoom,setPriceZoom]=useState(1),[cross,setCross]=useState<number|null>(null),[drawings,setDrawings]=useState<Drawing[]>([]),[draft,setDraft]=useState<{time:number;price:number}|null>(null),[hoverEvent,setHoverEvent]=useState<JournalEntry|null>(null);
  const[ind,setInd]=useState<Record<Indicator,boolean>>({ema20:true,ema50:true,ema200:false,vwap:true,bollinger:false,rsi:true,atr:false,volume:true,zones:true,structure:true,trades:true});
- const drag=useRef<{x:number;y:number;offset:number;zoom:number}|null>(null),key=`smoke-drawings:${symbol}:${timeframe}`;
+ const drag=useRef<{x:number;y:number;offset:number;zoom:number}|null>(null),key=`smoke-drawings:${workspace}:${symbol}:${timeframe}`;
  useEffect(()=>{try{setDrawings(JSON.parse(localStorage.getItem(key)??"[]"))}catch{setDrawings([])}},[key]);
  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(drawings))}catch{}},[key,drawings]);
  useEffect(()=>{setOffset(0);setCount(timeframe==="1w"?100:timeframe==="1d"?140:180);setCross(null)},[symbol,timeframe]);
