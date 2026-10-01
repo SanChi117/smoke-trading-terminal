@@ -4,6 +4,7 @@ import {GuardianStream} from '../services/market-data/guardian-stream.mjs';
 import {GuardianResearchPipeline} from '../services/exit-guardian/fast-pipeline.ts';
 import {GuardianStore} from '../core/ledger/guardian-store.mjs';
 import {compileTradePlan} from '../core/contracts/trade-plan.ts';
+const tradeFrame={e:'aggTrade',s:'BTCUSDT',a:1,E:1000,T:1000,p:'100',q:'1',m:false,st:1};
 function fixture(overrides={}){
  let now=1000,next=1;const timers=new Map(),sockets=[],records=[],samples=[],calls=[];
  const pipeline={restart:()=>calls.push('restart'),disconnect:()=>calls.push('disconnect'),ingest:payload=>calls.push(payload.e),sample:()=>({mode:'RESEARCH_ONLY',execution:'NOT_ARMED'})};
@@ -13,8 +14,8 @@ function fixture(overrides={}){
 }
 test('public streams warm up together and record inputs before research samples',()=>{
  const f=fixture();f.stream.start();assert.equal(f.sockets.length,2);assert.match(f.sockets[0].url,/\/market\/ws\/btcusdt@aggTrade$/);assert.match(f.sockets[1].url,/\/public\/ws\/btcusdt@bookTicker$/);
- f.sockets[0].emit('open');f.sockets[0].emit('message',{data:JSON.stringify({e:'aggTrade'})});assert.equal(f.records.length,0);
- f.sockets[1].emit('open');f.sockets[0].emit('message',{data:JSON.stringify({e:'aggTrade'})});f.advance(500);
+ f.sockets[0].emit('open');f.sockets[0].emit('message',{data:JSON.stringify(tradeFrame)});assert.equal(f.records.length,0);
+ f.sockets[1].emit('open');f.sockets[0].emit('message',{data:JSON.stringify(tradeFrame)});f.advance(500);
  assert.deepEqual(f.records.map(r=>r.kind),['RESTART','EVENT','SAMPLE']);assert.equal(f.samples.length,1);f.stream.stop();assert.equal(f.timers.size,0);
 });
 test('one stream failing closes both, invalidates callbacks and reconnects once with backoff',()=>{
@@ -28,7 +29,7 @@ test('silent stream watchdog resets confidence instead of reusing stale input',(
  assert.ok(f.records.some(r=>r.kind==='DISCONNECT'));assert.ok(f.calls.includes('disconnect'));assert.ok(f.samples.length>0);f.stream.stop();
 });
 test('capture failure stops permanently before ingesting an unrecorded event',()=>{
- let records=0;const f=fixture({record:()=>{if(++records===2)throw new Error('disk full');}});f.stream.start();f.sockets.forEach(s=>s.emit('open'));f.sockets[0].emit('message',{data:JSON.stringify({e:'aggTrade'})});
+ let records=0;const f=fixture({record:()=>{if(++records===2)throw new Error('disk full');}});f.stream.start();f.sockets.forEach(s=>s.emit('open'));f.sockets[0].emit('message',{data:JSON.stringify(tradeFrame)});
  assert.equal(f.stream.running,false);assert.equal(f.calls.includes('aggTrade'),false);assert.equal(f.timers.size,0);assert.ok(f.calls.includes('fatal'));
 });
 test('wrong stream frames and missing socket opens trigger bounded recovery',()=>{
@@ -47,7 +48,9 @@ test('captured stream records replay through the real pipeline into identical du
  try{
   f.stream.start();f.sockets.forEach(s=>s.emit('open'));
   const send=(id,time)=>{f.sockets[0].emit('message',{data:JSON.stringify({e:'aggTrade',s:'BTCUSDT',a:id,T:time,E:time,p:'100',q:'1',m:false,st:1})});f.sockets[1].emit('message',{data:JSON.stringify({e:'bookTicker',s:'BTCUSDT',u:id,T:time,E:time,b:'99.99',a:'100',B:'1',A:'1',st:1})});};
-  send(1,1000);f.advance(250);send(2,1250);f.advance(250);send(3,1500);f.advance(250);f.stream.stop();
+  send(1,1000);f.advance(250);send(2,1250);f.advance(250);send(3,1500);f.advance(250);
+  f.sockets[0].emit('message',{data:JSON.stringify({...tradeFrame,p:'bad'})});
+  f.advance(250);f.stream.stop();
   for(const row of f.records){if(row.kind==='RESTART')replay.restart();else if(row.kind==='DISCONNECT')replay.disconnect();else if(row.kind==='EVENT')replay.ingest(row.payload,row.receivedAt);else replay.sample({...position,observedAt:row.time},row.time);}
   const read=store=>store.db.prepare('SELECT input_hash,result_json FROM guardian_events ORDER BY event_id').all();
   assert.ok(read(first).length>0);assert.deepEqual(read(first),read(second));assert.equal(first.claim(position.positionId),false);

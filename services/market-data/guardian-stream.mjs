@@ -1,3 +1,5 @@
+import {normalizeFastEvent} from './fast-events.ts';
+
 // Public data only. The injected pipeline must be the research pipeline; there
 // is deliberately no execution gateway, account key or live dispatcher here.
 export class GuardianStream {
@@ -27,9 +29,10 @@ export class GuardianStream {
       if(typeof event.data!=='string'||event.data.length>64000)throw new Error('INVALID_STREAM_FRAME');
       payload=JSON.parse(event.data);receivedAt=this.now();
       if(payload.e!==(i===0?'aggTrade':'bookTicker'))throw new Error('WRONG_STREAM_FRAME');
+      normalizeFastEvent(payload,this.symbol,receivedAt);
      }catch{this.fail(generation);return;}
      try{this.capture({kind:'EVENT',payload,receivedAt});}catch{this.fatal();return;}
-     try{this.pipeline.ingest(payload,receivedAt);this.last[i]=receivedAt;}catch{this.fail(generation);}
+     try{this.pipeline.ingest(payload,receivedAt);this.last[i]=receivedAt;}catch{this.fatal();}
     });
     socket.addEventListener('close',()=>{if(active())this.fail(generation);});
     socket.addEventListener('error',()=>{if(active())this.fail(generation);});
