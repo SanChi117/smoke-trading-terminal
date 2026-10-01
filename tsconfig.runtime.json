@@ -15,7 +15,8 @@
     "services/exit-guardian/fast-pipeline.ts",
     "services/execution/reconcile-protection.ts",
     "services/execution/collect-protection.ts",
-    "services/execution/protective-stop.ts"
+    "services/execution/protective-stop.ts",
+    "integrations/binance/exchange-filters.ts"
   ],
   "exclude": [
     "node_modules",

@@ -5,6 +5,8 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {backup} from 'node:sqlite';
 import {FillStore} from '../core/ledger/fill-store.mjs';
+import {StopStore} from '../core/ledger/stop-store.mjs';
+import {collectStopChildFills} from '../services/execution/collect-stop-fills.mjs';
 import {ExecutionStore} from '../core/ledger/execution-store.mjs';
 import {GuardianStore} from '../core/ledger/guardian-store.mjs';
 import {evaluateGuardian,dispatchGuardian} from '../services/exit-guardian/runtime.ts';
@@ -87,4 +89,29 @@ test('changing exchange execution or missing historical fills stays unresolved',
  const {store}=await setup(t);let calls=0;
  const changed=await collectOrderFills(store,{lookup:async()=>({...remote,updateTime:2000+calls++}),orderTrades:async()=>[raw]},collection);assert.equal(changed.state,'RECONCILIATION_REQUIRED');
  await assert.rejects(collectOrderFills(store,{lookup:async()=>({...remote,symbol:'ETHUSDT'}),orderTrades:async()=>[]},collection),/MISMATCH/);
+});
+const stopIntent={accountId:'auto',positionId:'smoke-position',plan,order:{clientOrderId:'smoke-stop',symbol:'BTCUSDT',side:'SELL',quantity:0.3,triggerPrice:95},researchOnly:false};
+const triggered={...stopIntent.order,exchangeOrderId:'30',actualOrderId:'40',status:'TRIGGERED',updateTime:2000,type:'STOP_MARKET',positionSide:'BOTH',workingType:'MARK_PRICE',reduceOnly:true,closePosition:false};
+const child={clientOrderId:'exchange-generated-child',exchangeOrderId:'40',symbol:'BTCUSDT',side:'SELL',originalQuantity:0.3,executedQuantity:0.3,averagePrice:94.9,updateTime:2000,status:'FILLED',reduceOnly:true,positionSide:'BOTH',type:'MARKET'};
+test('conditional child order binds through exact IDs and actual fills without any writes to exchange',async t=>{
+ const {store,path}=await setup(t),stops=new StopStore(path);t.after(()=>stops.close());stops.reserveStop(stopIntent);
+ const methods=[],gateway=new BinanceAutoGateway({apiKey:'fake',secretKey:'fake'},async(url,options)=>{
+  const u=new URL(url);methods.push(options.method);
+  if(u.pathname.endsWith('algoOrder')){assert.equal(u.searchParams.get('clientAlgoId'),'smoke-stop');return Response.json({algoId:30,actualOrderId:'40',clientAlgoId:'smoke-stop',algoType:'CONDITIONAL',symbol:'BTCUSDT',side:'SELL',quantity:'0.3',triggerPrice:'95',algoStatus:'TRIGGERED',orderType:'STOP_MARKET',positionSide:'BOTH',workingType:'MARK_PRICE',reduceOnly:true,closePosition:false,updateTime:2000});}
+  if(u.pathname.endsWith('userTrades')){assert.equal(u.searchParams.get('orderId'),'40');return Response.json([{...raw,id:5,orderId:40,side:'SELL',price:'94.9',realizedPnl:'-1.53'}]);}
+  assert.equal(u.searchParams.get('orderId'),'40');assert.equal(u.searchParams.has('origClientOrderId'),false);
+  return Response.json({...child,orderId:40,origQty:'0.3',executedQty:'0.3',avgPrice:'94.9'});
+ });
+ const args={accountId:'auto',stopClientOrderId:'smoke-stop',isolatedAutoAccount:true,now:()=>2001};
+ const result=await collectStopChildFills(stops,store,gateway,args);assert.equal(result.state,'RECORDED_QUANTITY_MATCH');assert.ok(methods.every(m=>m==='GET'));assert.equal(store.summary('auto','p').reportedRealizedPnlUsdt,'-1.53');
+ assert.equal((await collectStopChildFills(stops,store,gateway,args)).inserted,0);
+ stops.observeStop('smoke-stop',{...triggered,status:'FINISHED',updateTime:2001});
+ assert.throws(()=>stops.observeStop('smoke-stop',{...triggered,status:'FINISHED',updateTime:2002,actualOrderId:'41'}),/CHANGED/);
+});
+test('research or mismatched child evidence cannot attach stop fills to a plan',async t=>{
+ const {store,path}=await setup(t),stops=new StopStore(path);t.after(()=>stops.close());stops.reserveStop(stopIntent);stops.observeStop('smoke-stop',triggered);
+ for(const bad of [{...child,exchangeOrderId:'41'},{...child,reduceOnly:false},{...child,positionSide:'LONG'},{...child,side:'BUY'},{...child,originalQuantity:1}])assert.throws(()=>store.bindStopChild('auto','smoke-stop',bad,{isolatedAutoAccount:true,now:2001}),/MISMATCH/);
+ let calls=0;await assert.rejects(collectStopChildFills(stops,store,{lookupStop:async()=>{calls++;return triggered;}},{accountId:'manual',stopClientOrderId:'smoke-stop',isolatedAutoAccount:true}));assert.equal(calls,0);
+ const research={...stopIntent,accountId:'research',positionId:'smoke-research',order:{...stopIntent.order,clientOrderId:'smoke-research'},researchOnly:true};stops.reserveStop(research);
+ await assert.rejects(collectStopChildFills(stops,store,{lookupStop:async()=>{calls++;return triggered;}},{accountId:'research',stopClientOrderId:'smoke-research',isolatedAutoAccount:true}));assert.equal(calls,0);
 });

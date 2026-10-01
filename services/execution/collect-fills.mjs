@@ -9,6 +9,7 @@ function normalize(raw,binding,now){
  return {symbol:raw.symbol,exchangeOrderId:binding.exchangeOrderId,tradeId:exactId(raw.id),side:raw.side,quantity:canonicalDecimal(raw.qty),price:canonicalDecimal(raw.price),realizedPnl:canonicalDecimal(raw.realizedPnl),fee:canonicalDecimal(raw.commission),feeAsset:raw.commissionAsset,exchangeTime:raw.time};
 }
 function checkOrder(remote,binding,now){
+ if(binding.origin==='PROTECTIVE_STOP'&&(remote.reduceOnly!==true||remote.positionSide!=='BOTH'||remote.type!=='MARKET'))throw new Error('STOP_CHILD_EXECUTION_MISMATCH');
  if(!['NEW','PARTIALLY_FILLED','FILLED','CANCELED','EXPIRED','EXPIRED_IN_MATCH','REJECTED'].includes(remote.status))throw new Error('FILL_ORDER_STATUS_INVALID');
  if(remote.clientOrderId!==binding.clientOrderId||remote.exchangeOrderId!==binding.exchangeOrderId||remote.symbol!==binding.symbol||remote.side!==binding.side||numberDecimal(remote.originalQuantity)!==binding.quantity||!Number.isFinite(remote.executedQuantity)||remote.executedQuantity<0||remote.executedQuantity>remote.originalQuantity||!Number.isSafeInteger(remote.updateTime)||remote.updateTime>now)throw new Error('FILL_ORDER_MISMATCH');
 }
@@ -19,7 +20,8 @@ export async function collectOrderFills(store,gateway,{accountId,clientOrderId,i
  if(!Number.isInteger(maxPages)||maxPages<1||maxPages>20)throw new Error('FILL_PAGE_LIMIT');
  const binding=store.orderBinding(accountId,clientOrderId),started=now();
  if(!Number.isSafeInteger(started))throw new Error('FILL_CLOCK_INVALID');
- const before=await gateway.lookup(binding.symbol,clientOrderId);checkOrder(before,binding,now());
+ const lookup=()=>binding.origin==='PROTECTIVE_STOP'?gateway.lookupStopChild(binding.symbol,binding.exchangeOrderId):gateway.lookup(binding.symbol,clientOrderId);
+ const before=await lookup();checkOrder(before,binding,now());
  let fromId='0',inserted=0,pages=0,exhausted=false;
  for(;pages<maxPages;){
   const raw=await gateway.orderTrades(binding.symbol,binding.exchangeOrderId,fromId),observed=now();
@@ -30,7 +32,7 @@ export async function collectOrderFills(store,gateway,{accountId,clientOrderId,i
   if(raw.length<1000){exhausted=true;break;}
   fromId=(previous+1n).toString();
  }
- const after=await gateway.lookup(binding.symbol,clientOrderId),finished=now();checkOrder(after,binding,finished);
+ const after=await lookup(),finished=now();checkOrder(after,binding,finished);
  if(finished<started||finished-started>60000)throw new Error('FILL_COLLECTION_INVALID_OR_SLOW');
  const stable=before.updateTime===after.updateTime&&before.status===after.status&&before.executedQuantity===after.executedQuantity;
  const quantityMatches=store.importedQuantity(accountId,binding.symbol,binding.exchangeOrderId)===numberDecimal(after.executedQuantity);

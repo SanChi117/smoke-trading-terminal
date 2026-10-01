@@ -35,6 +35,14 @@ export class FillStore {
   if(event.researchOnly===true||position.accountId!==accountId||position.accountKind!=='AUTO'||persisted.binding_hash!==guardianDigest({plan,accountId,side:position.side,symbol:position.symbol,researchOnly:false})||!receipt?.exchangeOrderId||!/^\d+$/.test(String(receipt.exchangeOrderId))||order.symbol!==plan.symbol||order.side!==(plan.side==='LONG'?'SELL':'BUY')||order.reduceOnly!==true)throw new Error('GUARDIAN_ACCOUNTING_BINDING_MISMATCH');
   return this.#bind({accountId,symbol:order.symbol,exchangeOrderId:String(receipt.exchangeOrderId),clientOrderId:order.clientOrderId,planId:plan.planId,side:order.side,quantity:positive(numberDecimal(order.quantity)),plan,positionId});
  });}
+ bindStopChild(accountId,stopClientOrderId,child,{isolatedAutoAccount=false,now=Date.now()}={}){return this.transaction(()=>{
+  id(accountId);id(stopClientOrderId);if(isolatedAutoAccount!==true)throw new Error('ACCOUNTING_ISOLATION_REQUIRED');
+  const row=this.db.prepare('SELECT intent_json,remote_json FROM protective_stops WHERE id=?').get(stopClientOrderId);
+  if(!row?.remote_json)throw new Error('UNKNOWN_TRIGGERED_STOP');
+  const intent=JSON.parse(row.intent_json),remote=JSON.parse(row.remote_json);
+  if(intent.researchOnly!==false||intent.accountId!==accountId||!['TRIGGERED','FINISHED'].includes(remote.status)||! /^[1-9]\d{0,19}$/.test(remote.actualOrderId??'')||remote.actualOrderId!==child.exchangeOrderId||child.symbol!==intent.order.symbol||child.side!==intent.order.side||child.reduceOnly!==true||child.positionSide!=='BOTH'||child.type!=='MARKET'||!Number.isSafeInteger(now)||!Number.isSafeInteger(child.updateTime)||child.updateTime>now||child.updateTime<intent.plan.createdAt||!Number.isSafeInteger(remote.updateTime)||remote.updateTime>now||!['NEW','PARTIALLY_FILLED','FILLED','CANCELED','EXPIRED','EXPIRED_IN_MATCH'].includes(child.status)||!Number.isFinite(child.originalQuantity)||child.originalQuantity<=0||child.originalQuantity>intent.order.quantity||!Number.isFinite(child.executedQuantity)||child.executedQuantity<0||child.executedQuantity>child.originalQuantity)throw new Error('STOP_CHILD_ACCOUNTING_MISMATCH');
+  return this.#bind({accountId,symbol:child.symbol,exchangeOrderId:child.exchangeOrderId,clientOrderId:id(child.clientOrderId),planId:intent.plan.planId,side:child.side,quantity:positive(numberDecimal(child.originalQuantity)),plan:intent.plan,positionId:intent.positionId,origin:'PROTECTIVE_STOP',stopClientOrderId});
+ });}
  #bind(binding){
   if(!binding.symbol.endsWith('USDT'))throw new Error('ACCOUNTING_QUOTE_ASSET_UNSUPPORTED');
   const previous=this.db.prepare('SELECT * FROM accounting_orders WHERE client_order_id=? OR (account_id=? AND symbol=? AND exchange_order_id=?)').all(binding.clientOrderId,binding.accountId,binding.symbol,binding.exchangeOrderId);

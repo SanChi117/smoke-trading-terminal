@@ -60,6 +60,14 @@ export class BinanceAutoGateway implements AutoExecutionGateway, OrderLookup {
     return result;
   }
 
+  async lookupStopChild(symbol:string,exchangeOrderId:string):Promise<RemoteOrder & {reduceOnly:boolean;positionSide:string;type:string}> {
+    if(!/^[A-Z0-9]{5,20}$/.test(symbol)||! /^[1-9]\d{0,19}$/.test(exchangeOrderId))throw new Error('INVALID_STOP_CHILD_LOOKUP');
+    const p=objectPayload(await this.signed('GET','/fapi/v1/order',{symbol,orderId:exchangeOrderId}));
+    if((typeof p.orderId==='number'&&!Number.isSafeInteger(p.orderId))||String(p.orderId)!==exchangeOrderId||p.symbol!==symbol||typeof p.clientOrderId!=='string'||!p.clientOrderId||!['BUY','SELL'].includes(String(p.side))||typeof p.reduceOnly!=='boolean')throw new Error('STOP_CHILD_IDENTITY_MISMATCH');
+    const number=(v:unknown)=>{if((typeof v!=='string'&&typeof v!=='number')||String(v).trim()===''||!Number.isFinite(Number(v)))throw new Error('INVALID_STOP_CHILD_NUMBER');return Number(v);};
+    return {clientOrderId:p.clientOrderId,symbol,exchangeOrderId,side:p.side as 'BUY'|'SELL',status:String(p.status),originalQuantity:number(p.origQty),executedQuantity:number(p.executedQty),averagePrice:number(p.avgPrice),updateTime:number(p.updateTime),reduceOnly:p.reduceOnly,positionSide:String(p.positionSide),type:String(p.type)};
+  }
+
   async orderTrades(symbol: string, exchangeOrderId: string, fromId: string): Promise<readonly Record<string, unknown>[]> {
     if (!/^[A-Z0-9]{5,20}$/.test(symbol) || !/^\d{1,20}$/.test(exchangeOrderId) || !/^\d{1,20}$/.test(fromId)) throw new Error('INVALID_TRADE_LOOKUP');
     const result = await this.signed('GET', '/fapi/v1/userTrades', {symbol,orderId:exchangeOrderId,fromId,limit:'1000'});
@@ -113,5 +121,7 @@ function stopPayload(value:unknown):StopRemote {
  const numeric=(v:unknown)=>{if((typeof v!=='string'&&typeof v!=='number')||String(v).trim()===''||!Number.isFinite(Number(v)))throw new Error('BINANCE_INVALID_STOP_NUMBER');return Number(v);};
  const bool=(v:unknown)=>{if(v===true||v==='true')return true;if(v===false||v==='false')return false;throw new Error('BINANCE_INVALID_STOP_BOOLEAN');};
  if(typeof p.clientAlgoId!=='string'||typeof p.symbol!=='string'||!['BUY','SELL'].includes(String(p.side))||p.algoType!=='CONDITIONAL'||(typeof p.algoId==='number'&&!Number.isSafeInteger(p.algoId))||!/^\d+$/.test(String(p.algoId)))throw new Error('BINANCE_INVALID_STOP_RESPONSE');
- return {clientOrderId:p.clientAlgoId,symbol:p.symbol,side:p.side as 'BUY'|'SELL',exchangeOrderId:String(p.algoId),quantity:numeric(p.quantity),triggerPrice:numeric(p.triggerPrice),updateTime:numeric(p.updateTime),status:String(p.algoStatus),type:String(p.orderType),positionSide:String(p.positionSide),workingType:String(p.workingType),reduceOnly:bool(p.reduceOnly),closePosition:bool(p.closePosition)};
+ const actual=p.actualOrderId;
+ if(actual!==undefined&&actual!==''&&actual!=='0'&&actual!==0&&((typeof actual==='number'&&!Number.isSafeInteger(actual))||! /^[1-9]\d{0,19}$/.test(String(actual))))throw new Error('INVALID_STOP_CHILD_ID');
+ return {clientOrderId:p.clientAlgoId,symbol:p.symbol,side:p.side as 'BUY'|'SELL',exchangeOrderId:String(p.algoId),...(actual!==undefined&&actual!==''&&actual!=='0'&&actual!==0?{actualOrderId:String(actual)}:{}),quantity:numeric(p.quantity),triggerPrice:numeric(p.triggerPrice),updateTime:numeric(p.updateTime),status:String(p.algoStatus),type:String(p.orderType),positionSide:String(p.positionSide),workingType:String(p.workingType),reduceOnly:bool(p.reduceOnly),closePosition:bool(p.closePosition)};
 }

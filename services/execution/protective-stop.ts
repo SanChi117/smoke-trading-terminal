@@ -1,8 +1,9 @@
 import { compileTradePlan, type TradePlan } from '../../core/contracts/trade-plan.ts';
+import { validateStopFilters, type SymbolFilters } from '../../core/risk/exchange-filters.ts';
 import { reconcilePositionProtection, type ProtectionSnapshot } from './reconcile-protection.ts';
 
 export type StopOrder = Readonly<{clientOrderId:string;symbol:string;side:'BUY'|'SELL';quantity:number;triggerPrice:number}>;
-export type StopRemote = StopOrder & Readonly<{exchangeOrderId:string;status:string;updateTime:number;type:string;positionSide:string;workingType:string;reduceOnly:boolean;closePosition:boolean}>;
+export type StopRemote = StopOrder & Readonly<{exchangeOrderId:string;actualOrderId?:string;status:string;updateTime:number;type:string;positionSide:string;workingType:string;reduceOnly:boolean;closePosition:boolean}>;
 export type StopIntent = Readonly<{accountId:string;positionId:string;plan:TradePlan;order:StopOrder;previousClientOrderId?:string;researchOnly:boolean}>;
 export type StopRecord = {intent:StopIntent;state:string;remote?:StopRemote};
 export interface StopJournal {
@@ -15,7 +16,7 @@ export interface StopJournal {
  finishReplacement(id:string,remote:StopRemote):void;
 }
 export interface StopGateway { submitStop(order:StopOrder):Promise<StopRemote>; lookupStop(id:string):Promise<StopRemote>; cancelStop(id:string):Promise<void> }
-export type StopContext = {accountId:string;isolatedAutoAccount:boolean;liveEnabled:boolean;snapshot:ProtectionSnapshot;now?:()=>number};
+export type StopContext = {accountId:string;isolatedAutoAccount:boolean;liveEnabled:boolean;snapshot:ProtectionSnapshot;filters?:SymbolFilters;now?:()=>number};
 
 function validate(intent:StopIntent,context:StopContext,journal:StopJournal) {
  const now=(context.now??Date.now)();
@@ -24,6 +25,7 @@ function validate(intent:StopIntent,context:StopContext,journal:StopJournal) {
  if(!/^smoke-[A-Za-z0-9_-]{1,30}$/.test(o.clientOrderId)||!/^smoke-[A-Za-z0-9_-]{1,100}$/.test(intent.positionId)||o.symbol!==p.symbol||o.side!==(p.side==='LONG'?'SELL':'BUY')||!Number.isFinite(o.quantity)||o.quantity<=0||!Number.isFinite(o.triggerPrice)||o.triggerPrice<=0)throw new Error('INVALID_STOP_INTENT');
  if(!p.allowedActions.includes(action)||p.forbiddenActions.includes(action))throw new Error('STOP_ACTION_FORBIDDEN');
  if(intent.accountId!==context.accountId||context.isolatedAutoAccount!==true)throw new Error('STOP_ACCOUNT_MISMATCH');
+ validateStopFilters(context.filters,o,now,context.liveEnabled&&!intent.researchOnly);
  const result=reconcilePositionProtection(context.snapshot,[{positionId:intent.positionId,plan:p,quantity:o.quantity,stopClientOrderIds:[o.clientOrderId,...(intent.previousClientOrderId?[intent.previousClientOrderId]:[])]}],{accountId:context.accountId,isolatedAutoAccount:context.isolatedAutoAccount,now},{saveProtection:r=>r});
  if(result.issues.some(issue=>issue!==`POSITION_NOT_PROTECTED:${intent.positionId}`))throw new Error('STOP_SNAPSHOT_UNSAFE');
  const mark=context.snapshot.positions.find(v=>v.symbol===p.symbol&&v.signedQuantity!==0)!.markPrice;
@@ -41,7 +43,7 @@ function exact(remote:StopRemote,order:StopOrder,now:number) {
 // supply fresh authenticated ownership evidence on every mutation/recovery call.
 export async function maintainProtectiveStop(intent:StopIntent,context:StopContext,journal:StopJournal,gateway:StopGateway):Promise<StopRecord> {
  intent=structuredClone(intent);
- context={...context,snapshot:structuredClone(context.snapshot)};
+ context={...context,snapshot:structuredClone(context.snapshot),filters:context.filters?structuredClone(context.filters):undefined};
  journal.pauseStops();
  validate(intent,context,journal);
  let record=journal.reserveStop(intent);

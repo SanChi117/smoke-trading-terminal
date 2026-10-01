@@ -39,7 +39,8 @@ export class StopStore {
  observeStop(id,remote){return this.transaction(()=>{
   const row=this.getStop(id);
   if(row.remote&&(remote.exchangeOrderId!==row.remote.exchangeOrderId||remote.updateTime<row.remote.updateTime||remote.updateTime===row.remote.updateTime&&guardianDigest(remote)!==guardianDigest(row.remote)))throw new Error('STOP_REMOTE_REGRESSION');
-  if(['CANCELED','EXPIRED','FINISHED','TRIGGERED','REJECTED','REPLACED'].includes(row.state)&&remote.status!==row.state)throw new Error('STOP_TERMINAL_REGRESSION');
+  if(row.remote?.actualOrderId&&remote.actualOrderId!==row.remote.actualOrderId)throw new Error('STOP_CHILD_ID_CHANGED');
+  if(['CANCELED','EXPIRED','FINISHED','TRIGGERED','REJECTED','REPLACED'].includes(row.state)&&remote.status!==row.state&&!(row.state==='TRIGGERED'&&remote.status==='FINISHED'))throw new Error('STOP_TERMINAL_REGRESSION');
   const state=remote.status==='NEW'&&['CANCEL_CLAIMED','CANCEL_UNCERTAIN'].includes(row.state)?row.state:remote.status;
   this.db.prepare('UPDATE protective_stops SET state=?,remote_json=? WHERE id=?').run(state,JSON.stringify(remote),id);this.event(id,'OBSERVED',remote);
  });}

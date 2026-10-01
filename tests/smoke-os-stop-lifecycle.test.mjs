@@ -6,13 +6,37 @@ import { join } from 'node:path';
 import { StopStore } from '../core/ledger/stop-store.mjs';
 import { maintainProtectiveStop } from '../services/execution/protective-stop.ts';
 import { BinanceAutoGateway } from '../integrations/binance/auto-gateway.ts';
+import { parseSymbolFilters,validateStopFilters } from '../core/risk/exchange-filters.ts';
+import { collectSymbolFilters } from '../integrations/binance/exchange-filters.ts';
 const plan={planId:'p',decisionId:'d',symbol:'BTCUSDT',side:'LONG',marketRegime:'TREND',winningBrain:'TREND',mechanism:'test',entryMethod:'MARKET',entryPrices:[100],initialStop:95,naturalInvalidation:'support',exitMode:'GUARDIAN',marginCapUsdt:1,leverage:1,allowedActions:['PLACE_STOP','REPLACE_STOP'],forbiddenActions:['TOUCH_MANUAL'],expiresAt:1500,createdAt:1,sourceVersions:{test:'1'},dataSnapshotId:'s'};
 const intent={accountId:'auto',positionId:'smoke-position',plan,order:{clientOrderId:'smoke-stop1',symbol:'BTCUSDT',side:'SELL',quantity:1,triggerPrice:95},researchOnly:false};
-const context={accountId:'auto',isolatedAutoAccount:true,liveEnabled:true,now:()=>2000,snapshot:{snapshotId:'snap',accountId:'auto',observedAt:2000,complete:true,positions:[{symbol:'BTCUSDT',positionSide:'BOTH',signedQuantity:1,markPrice:100}],stops:[]}};
+const filters={symbol:'BTCUSDT',observedAt:2000,source:'SERVER_PUBLIC_READ_ONLY',price:{min:'0',max:'1000000',step:'0.01'},lot:{min:'0',max:'100',step:'0.001'},marketLot:{min:'0',max:'100',step:'0.001'}};
+const context={filters,accountId:'auto',isolatedAutoAccount:true,liveEnabled:true,now:()=>2000,snapshot:{snapshotId:'snap',accountId:'auto',observedAt:2000,complete:true,positions:[{symbol:'BTCUSDT',positionSide:'BOTH',signedQuantity:1,markPrice:100}],stops:[]}};
 const next={...intent,previousClientOrderId:'smoke-stop1',order:{...intent.order,clientOrderId:'smoke-stop2',triggerPrice:97}};
 function remote(order,status='NEW',updateTime=2000){return {...order,exchangeOrderId:order.clientOrderId.endsWith('1')?'1':'2',status,updateTime,type:'STOP_MARKET',positionSide:'BOTH',workingType:'MARK_PRICE',reduceOnly:true,closePosition:false};}
 function fake(){const orders=new Map(),calls=[];return {orders,calls,async submitStop(o){calls.push(`POST:${o.clientOrderId}`);const r=remote(o);orders.set(o.clientOrderId,r);return r;},async lookupStop(id){calls.push(`GET:${id}`);if(!orders.has(id))throw new Error('not found');return orders.get(id);},async cancelStop(id){calls.push(`DELETE:${id}`);orders.set(id,{...orders.get(id),status:'CANCELED',updateTime:2001});}};}
 function setup(t){const dir=mkdtempSync(join(tmpdir(),'stop-')),path=join(dir,'ledger.sqlite');let store=new StopStore(path);t.after(()=>{store.close();rmSync(dir,{recursive:true,force:true});});return {get store(){return store;},restart(){store.close();store=new StopStore(path);}};}
+const exchangeInfo={symbols:[{symbol:'BTCUSDT',status:'TRADING',contractType:'PERPETUAL',quoteAsset:'USDT',marginAsset:'USDT',pricePrecision:8,quantityPrecision:8,filters:[{filterType:'PRICE_FILTER',minPrice:'0.01',maxPrice:'1000000',tickSize:'0.01'},{filterType:'LOT_SIZE',minQty:'0.001',maxQty:'100',stepSize:'0.001'},{filterType:'MARKET_LOT_SIZE',minQty:'0.001',maxQty:'10',stepSize:'0.001'}]}]};
+test('exchange grids use exact decimals and independent market quantity bounds',()=>{
+ const f=parseSymbolFilters(exchangeInfo,'BTCUSDT',2000,'SERVER_PUBLIC_READ_ONLY');
+ validateStopFilters(f,intent.order,2000,true);
+ for(const o of [{...intent.order,triggerPrice:95.001},{...intent.order,quantity:0.0005},{...intent.order,quantity:11}])assert.throws(()=>validateStopFilters(f,o,2000,true),/GRID/);
+ const offset={...f,price:{min:'0.01',max:'1',step:'0.03'}};
+ validateStopFilters(offset,{...intent.order,triggerPrice:0.1},2000,true);
+ assert.throws(()=>validateStopFilters(offset,{...intent.order,triggerPrice:0.09},2000,true),/GRID/);
+ assert.throws(()=>parseSymbolFilters({symbols:[...exchangeInfo.symbols,...exchangeInfo.symbols]},'BTCUSDT',2000,'REPLAY'),/AMBIGUOUS/);
+});
+test('missing stale replay or misaligned stop filters cause no mutation',async t=>{
+ const db=setup(t),g=fake();
+ for(const f of [undefined,{...filters,observedAt:-4000000},{...filters,observedAt:2001},{...filters,source:'REPLAY'},{...filters,symbol:'ETHUSDT'},{...filters,price:{...filters.price,step:'0.07'}}])await assert.rejects(maintainProtectiveStop(intent,{...context,filters:f},db.store,g));
+ assert.equal(g.calls.length,0);assert.equal(db.store.db.prepare('SELECT entries_paused FROM runtime_control').get().entries_paused,1);
+});
+test('filter collector is fixed-origin public GET and rejects delayed or malformed evidence',async()=>{
+ const transport=async(url,options)=>{assert.equal(url,'https://fapi.binance.com/fapi/v1/exchangeInfo');assert.equal(options.method,'GET');assert.equal(options.headers,undefined);assert.equal(options.redirect,'error');return Response.json(exchangeInfo);};
+ assert.equal((await collectSymbolFilters('BTCUSDT',transport,()=>2000)).price.step,'0.01');
+ let clock=0;await assert.rejects(collectSymbolFilters('BTCUSDT',transport,()=>clock++?10000:1000),/STALE/);
+ const bad=structuredClone(exchangeInfo);bad.symbols[0].filters.push(bad.symbols[0].filters[0]);assert.throws(()=>parseSymbolFilters(bad,'BTCUSDT',2000,'REPLAY'),/DUPLICATE/);
+});
 test('replacement installs and queries new stop before exact old cancellation, survives restart',async t=>{
  const db=setup(t),g=fake();assert.equal((await maintainProtectiveStop(intent,context,db.store,g)).state,'NEW');
  db.restart();const ctx={...context,now:()=>2001};assert.equal((await maintainProtectiveStop(next,ctx,db.store,g)).state,'NEW');
