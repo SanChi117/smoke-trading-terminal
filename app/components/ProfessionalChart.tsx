@@ -5,7 +5,7 @@ import {
   createChart, createSeriesMarkers,
   type CandlestickData, type HistogramData, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type Time, type UTCTimestamp,
 } from "lightweight-charts";
-import { useEffect, useMemo, useRef, useState,type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore,type KeyboardEvent } from "react";
 import type { Candle, MtfLevelAnalysis } from "../lib/mtf-level-strategy";
 import type { ChartTimeframe } from "../lib/binance-level-client";
 import type { JournalEntry } from "../lib/trading-journal";
@@ -13,7 +13,9 @@ import LegacyChart from "./ProLevelChart";
 import { fetchSymbolRules } from "../lib/exchange-rules";
 import styles from "./TerminalV6.module.css";
 import chartStyles from "./ProfessionalChart.module.css";
-import {chartViewKey,parseChartView,restoreChartRange,shiftedChartRange} from './chart-view';
+import {chartViewKey,parseChartView,restoreChartRange,shiftedChartRange,parseChartLayers,chartIncrementalStart} from './chart-view';
+
+import { readChartLayers, writeChartLayers, subscribeChartLayers } from "./chart-layer-store";
 
 type Indicator = "ema20" | "ema50" | "ema200" | "vwap" | "volume" | "zones" | "trades" | "events";
 type Props = { symbol: string; timeframe: ChartTimeframe; workspace?: string; candles: Candle[]; analysis: MtfLevelAnalysis | null; journal: JournalEntry[]; loading?: boolean; focusTime?: number | null; tradeOverlay?: { entry: number; stop: number; target: number } };
@@ -25,17 +27,23 @@ function vwap(candles: readonly Candle[]) { let priceVolume = 0, volume = 0; ret
 
 export default function ProfessionalChart({ symbol, timeframe, workspace, candles, analysis, journal, loading, focusTime, tradeOverlay }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null), chartRef = useRef<IChartApi | null>(null), candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null), candlesRef = useRef(candles);
-  const previousRef = useRef<{ symbol: string; timeframe: ChartTimeframe; viewKey:string; length: number; lastTime: number } | null>(null), markerRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const previousRef = useRef<{ symbol: string; timeframe: ChartTimeframe; viewKey:string; length: number; lastTime: number; candles: Candle[] } | null>(null), markerRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const focusedRef=useRef<string|null>(null),viewKey=chartViewKey(workspace,symbol,timeframe);
   const indicatorRefs = useRef<{ ema20: ISeriesApi<"Line">; ema50: ISeriesApi<"Line">; ema200: ISeriesApi<"Line">; vwap: ISeriesApi<"Line">; volume: ISeriesApi<"Histogram"> } | null>(null);
-  const [legacy, setLegacy] = useState(false), [indicators, setIndicators] = useState(DEFAULT_INDICATORS), [hovered, setHovered] = useState<Candle | null>(null), [ready, setReady] = useState(false);
+  const [legacy, setLegacy] = useState(false), [hovered, setHovered] = useState<Candle | null>(null), [ready, setReady] = useState(false);
+  const layerRaw=useSyncExternalStore(subscribeChartLayers,()=>readChartLayers(viewKey),()=>null);
+  const indicators=useMemo(()=>parseChartLayers(layerRaw,DEFAULT_INDICATORS),[layerRaw]);
+  const [menu,setMenu]=useState<{key:string;x:number;y:number}|null>(null);
+  const menuRef=useRef<HTMLDivElement|null>(null);
+  const resetView=()=>{const chart=chartRef.current;if(!chart)return;chart.priceScale('right').applyOptions({autoScale:true});chart.timeScale().setVisibleLogicalRange({from:Math.max(0,candles.length-120),to:candles.length+8});};
+  useEffect(()=>{if(!menu)return;const close=(event:PointerEvent)=>{if(!menuRef.current?.contains(event.target as Node))setMenu(null)};const escape=(event:globalThis.KeyboardEvent)=>{if(event.key==='Escape')setMenu(null)};window.addEventListener('pointerdown',close);window.addEventListener('keydown',escape);return()=>{window.removeEventListener('pointerdown',close);window.removeEventListener('keydown',escape)}},[menu]);
   const handleChartKey=(event:KeyboardEvent<HTMLElement>)=>{
     const chart=chartRef.current;if(!chart||event.ctrlKey||event.altKey||event.metaKey||(event.target instanceof HTMLElement&&event.target.closest('input,textarea,select,[contenteditable="true"]')))return;
     const action=({ArrowLeft:'LEFT',ArrowRight:'RIGHT','+':'IN','=':'IN','-':'OUT'} as const)[event.key as 'ArrowLeft'|'ArrowRight'|'+'|'='|'-'];
     if(action){const range=chart.timeScale().getVisibleLogicalRange();if(range)chart.timeScale().setVisibleLogicalRange(shiftedChartRange(range,action));event.preventDefault();}
     else if(event.key==='Home'){chart.timeScale().fitContent();event.preventDefault();}
     else if(event.key==='End'){chart.timeScale().scrollToRealTime();event.preventDefault();}
-    else if(event.key.toLowerCase()==='r'){chart.priceScale('right').applyOptions({autoScale:true});chart.timeScale().setVisibleLogicalRange({from:Math.max(0,candles.length-120),to:candles.length+8});event.preventDefault();}
+    else if(event.key.toLowerCase()==='r'){resetView();event.preventDefault();}
   };
   const goToDate = () => {
     const raw = window.prompt("Дата и время (например 2026-09-13 12:00 UTC):");
@@ -97,12 +105,15 @@ export default function ProfessionalChart({ symbol, timeframe, workspace, candle
       return;
     }
     const previous = previousRef.current, last = candles.at(-1)!;
-    const streaming = previous?.symbol === symbol && previous.timeframe === timeframe && previous.length === candles.length && previous.lastTime === last.time;
+    const incrementalStart=previous?.viewKey===viewKey?chartIncrementalStart(previous.candles,candles):null;
+    const streaming = incrementalStart !== null;
     if (streaming) {
-      const index = candles.length - 1, time = asTime(last.time);
+      for(let index=incrementalStart!;index<candles.length;index++){
+      const last=candles[index], time = asTime(last.time);
       candleSeries.update({ time, open: last.open, high: last.high, low: last.low, close: last.close });
       series.ema20.update({ time, value: calculations.ema20[index] }); series.ema50.update({ time, value: calculations.ema50[index] }); series.ema200.update({ time, value: calculations.ema200[index] }); series.vwap.update({ time, value: calculations.vwap[index] });
       series.volume.update({ time, value: last.volume, color: last.close >= last.open ? "rgba(53,201,146,.38)" : "rgba(235,100,115,.38)" });
+      }
     } else {
       candleSeries.setData(candles.map((candle) => ({ time: asTime(candle.time), open: candle.open, high: candle.high, low: candle.low, close: candle.close })));
       const setLine = (target: ISeriesApi<"Line">, values: readonly number[]) => target.setData(candles.map((candle, index) => ({ time: asTime(candle.time), value: values[index] })).filter((point) => Number.isFinite(point.value)));
@@ -110,7 +121,7 @@ export default function ProfessionalChart({ symbol, timeframe, workspace, candle
       series.volume.setData(candles.map<HistogramData<Time>>((candle) => ({ time: asTime(candle.time), value: candle.volume, color: candle.close >= candle.open ? "rgba(53,201,146,.38)" : "rgba(235,100,115,.38)" })));
     }
     const changedInstrument = !previous || previous.viewKey !== viewKey;
-    previousRef.current = { symbol, timeframe, viewKey, length: candles.length, lastTime: last.time };
+    previousRef.current = { symbol, timeframe, viewKey, length: candles.length, lastTime: last.time, candles };
     if (changedInstrument) {
       chart.priceScale("right").applyOptions({ autoScale: true, invertScale: false });
       chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, candles.length - 120), to: candles.length + 8 });
@@ -155,5 +166,5 @@ export default function ProfessionalChart({ symbol, timeframe, workspace, candle
 
   if (legacy) return <div className={chartStyles.professionalChart}><div className={chartStyles.chartModeBar}><b>Режим рисунков</b><button onClick={() => setLegacy(false)}>Вернуться в PRO</button></div><LegacyChart symbol={symbol} timeframe={timeframe} workspace={workspace} candles={candles} analysis={analysis} journal={journal} loading={loading}/></div>;
   const latest = hovered && candles.includes(hovered) ? hovered : candles.at(-1) ?? null;
-  return <section tabIndex={0} onKeyDown={handleChartKey} className={chartStyles.professionalChart} aria-label={`${symbol} professional candlestick chart`}><div className={chartStyles.chartModeBar}><div className={chartStyles.chartLegend}><b>{symbol} · USDⓈ-M Futures · {timeframe} · UTC</b>{latest && <span>O {fmt(latest.open)} H {fmt(latest.high)} L {fmt(latest.low)} C {fmt(latest.close)} V {latest.volume.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>}</div><div className={chartStyles.chartActions}>{(Object.keys(indicators) as Indicator[]).map((key) => <button key={key} className={indicators[key] ? styles.on : ""} onClick={() => setIndicators((current) => ({ ...current, [key]: !current[key] }))}>{key.toUpperCase()}</button>)}<button onClick={() => chartRef.current?.timeScale().fitContent()}>По размеру</button><button onClick={() => chartRef.current?.timeScale().scrollToRealTime()}>Сейчас</button><button onClick={goToDate}>К дате</button><button onClick={() => hostRef.current?.parentElement?.requestFullscreen?.()}>На весь экран</button><button onClick={() => setLegacy(true)}>Рисовать</button></div></div><div className={chartStyles.chartStage}><div ref={hostRef} className={chartStyles.chartCanvas}/>{!candles.length && <div className={chartStyles.chartLoading}>{loading ? "Загрузка Binance Futures…" : "Нет свечей"}</div>}</div><footer className={chartStyles.chartAttribution}>Колесо / + − — масштаб · ← → — прокрутка · R — сброс · Home / End — история / сейчас · <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charts by TradingView</a></footer></section>;
+  return <section tabIndex={0} onKeyDown={handleChartKey} onContextMenu={event=>{event.preventDefault();setMenu({key:viewKey,x:Math.max(0,Math.min(event.clientX,window.innerWidth-224)),y:Math.max(0,Math.min(event.clientY,window.innerHeight-200))})}} className={chartStyles.professionalChart} aria-label={`${symbol} professional candlestick chart`}><div className={chartStyles.chartModeBar}><div className={chartStyles.chartLegend}><b>{symbol} · USDⓈ-M Futures · {timeframe} · UTC</b>{latest && <span>O {fmt(latest.open)} H {fmt(latest.high)} L {fmt(latest.low)} C {fmt(latest.close)} V {latest.volume.toLocaleString("en-US", { maximumFractionDigits: 0 })}</span>}</div><div className={chartStyles.chartActions}>{(Object.keys(indicators) as Indicator[]).map((key) => <button key={key} aria-pressed={indicators[key]} className={indicators[key] ? styles.on : ""} onClick={() => writeChartLayers(viewKey,{...indicators,[key]:!indicators[key]})}>{key.toUpperCase()}</button>)}<button onClick={() => chartRef.current?.timeScale().fitContent()}>По размеру</button><button onClick={() => chartRef.current?.timeScale().scrollToRealTime()}>Сейчас</button><button onClick={goToDate}>К дате</button><button onClick={() => hostRef.current?.parentElement?.requestFullscreen?.()}>На весь экран</button><button onClick={() => setLegacy(true)}>Рисовать</button></div></div><div className={chartStyles.chartStage}><div ref={hostRef} className={chartStyles.chartCanvas}/>{!candles.length && <div className={chartStyles.chartLoading}>{loading ? "Загрузка Binance Futures…" : "Нет свечей"}</div>}</div>{menu?.key===viewKey&&<div ref={menuRef} role="menu" aria-label="Действия графика" className={chartStyles.chartContextMenu} style={{left:menu.x,top:menu.y}}><button role="menuitem" onClick={()=>{resetView();setMenu(null)}}>Сбросить вид</button><button role="menuitem" onClick={()=>{chartRef.current?.timeScale().fitContent();setMenu(null)}}>Вся история</button><button role="menuitem" onClick={()=>{chartRef.current?.timeScale().scrollToRealTime();setMenu(null)}}>К последней свече</button><button role="menuitem" onClick={()=>{chartRef.current?.priceScale('right').applyOptions({autoScale:true});setMenu(null)}}>Автомасштаб цены</button><button role="menuitem" onClick={()=>{goToDate();setMenu(null)}}>К дате</button></div>}<footer className={chartStyles.chartAttribution}>Колесо / + − — масштаб · ← → — прокрутка · R — сброс · Home / End — история / сейчас · <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">Charts by TradingView</a></footer></section>;
 }

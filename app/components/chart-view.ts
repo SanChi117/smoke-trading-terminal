@@ -1,4 +1,22 @@
 export type SavedChartView={version:1;from:number;to:number};
+export function parseChartLayers<T extends Record<string, boolean>>(raw: string | null, defaults: T): T {
+ const result = { ...defaults };
+ if (!raw || raw.length > 2000) return result;
+ try {
+  const saved = JSON.parse(raw);
+  if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return result;
+  for (const key of Object.keys(defaults) as (keyof T)[]) if (typeof saved[key] === 'boolean') result[key] = saved[key];
+ } catch { /* Invalid browser storage falls back to usable defaults. */ }
+ return result;
+}
+// Only unchanged prefix objects prove that a feed update did not revise history.
+// A REST reload or a shifted rolling window must replace all series data.
+export function chartIncrementalStart<T extends { time: number }>(before: readonly T[], after: readonly T[]): number | null {
+ if (!before.length || after.length < before.length || after[before.length - 1]?.time !== before[before.length - 1].time) return null;
+ for (let i = 0; i < before.length - 1; i++) if (before[i] !== after[i]) return null;
+ for (let i = before.length; i < after.length; i++) if (after[i].time <= after[i - 1].time) return null;
+ return before.length - 1;
+}
 export function chartViewKey(workspace:string|undefined,symbol:string,timeframe:string){return ['smoke-pro-view',workspace??'default',symbol,timeframe].map(encodeURIComponent).join(':');}
 export function parseChartView(raw:string|null):SavedChartView|null{
  if(!raw||raw.length>1000)return null;

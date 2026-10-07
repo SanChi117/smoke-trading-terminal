@@ -10,6 +10,41 @@ const input = { planId: 'durable-1', decisionId: 'd1', symbol: 'BTCUSDT', side: 
 const plan = compileTradePlan(input);
 const rules = { stepSize: 0.001, minQty: 0.001, maxQty: 100, minNotional: 5 };
 const policy = { mode: 'AUTO_LIVE', liveEnabled: true, credentialsReady: true, isolatedAutoAccount: true, protectionReady: true };
+test('a LIMIT reservation cannot outlive plan expiry, clock validity or a new durable pause', async t => {
+  for (const scenario of ['expired', 'rollback', 'invalid', 'paused']) {
+    const journal = new ExecutionStore(':memory:');
+    t.after(() => journal.close());
+    journal.db.prepare('UPDATE runtime_control SET entries_paused=0 WHERE id=1').run();
+    let now = 1000, calls = 0;
+    const reserve = journal.reserve.bind(journal);
+    journal.reserve = async (...args) => {
+      const result = await reserve(...args);
+      if (scenario === 'expired') now = 2000;
+      if (scenario === 'rollback') now = 999;
+      if (scenario === 'invalid') now = NaN;
+      if (scenario === 'paused') journal.db.prepare('UPDATE runtime_control SET entries_paused=1 WHERE id=1').run();
+      return result;
+    };
+    const gateway = { submit: async () => { calls++; return { exchangeOrderId: '1', status: 'NEW' }; } };
+    const result = await executePlan(plan, 100, rules, policy, gateway, { journal, clock: () => now });
+    assert.equal(result.state, 'UNCERTAIN', scenario);
+    assert.equal(calls, 0, scenario);
+    assert.equal(journal.get(result.order.clientOrderId).state, 'UNCERTAIN', scenario);
+    now = 1000;
+    journal.db.prepare('UPDATE runtime_control SET entries_paused=0 WHERE id=1').run();
+    assert.equal((await executePlan(plan, 100, rules, policy, gateway, { journal, clock: () => now })).state, 'DUPLICATE_SUPPRESSED');
+    assert.equal(calls, 0);
+  }
+});
+test('invalid initial execution clock cannot reserve an intent or dispatch', async () => {
+  let touched = false;
+  const journal = { entriesPaused: () => false, reserve: async () => { touched = true; return true; }, record: async () => {} };
+  const gateway = { submit: async () => { touched = true; return { exchangeOrderId: '1', status: 'NEW' }; } };
+  for (const now of [NaN, Infinity, -1, 1.5]) {
+    assert.equal((await executePlan(plan, 100, rules, policy, gateway, { journal, now })).reason, 'INVALID_EXECUTION_CLOCK');
+  }
+  assert.equal(touched, false);
+});
 test('uncertain submit cannot duplicate across restart or concurrent callers', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'smoke-execution-'));
   let journal = new ExecutionStore(join(dir, 'ledger.sqlite'));

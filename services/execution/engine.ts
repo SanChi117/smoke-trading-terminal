@@ -25,6 +25,7 @@ export async function executePlan(plan: TradePlan, price: number, rules: Exchang
   rules = { ...rules };
   policy = { ...policy };
   const now = context.clock?.() ?? context.now ?? Date.now();
+  if (!Number.isSafeInteger(now) || now < 0) return Object.freeze({ state: "SAFE_MODE", reason: "INVALID_EXECUTION_CLOCK" });
   try { plan = compileTradePlan({ ...plan, entryPrices: [...plan.entryPrices], allowedActions: [...plan.allowedActions], forbiddenActions: [...plan.forbiddenActions] }); }
   catch { return Object.freeze({ state: "REJECTED", reason: "INVALID_PLAN" }); }
   if (plan.createdAt > now || plan.expiresAt <= now) return Object.freeze({ state: "REJECTED", reason: "PLAN_EXPIRED_OR_FUTURE" });
@@ -48,9 +49,10 @@ export async function executePlan(plan: TradePlan, price: number, rules: Exchang
     if (!await context.journal.reserve(order, plan)) return Object.freeze({ state: "DUPLICATE_SUPPRESSED", reason: "RECONCILE_EXISTING_INTENT", sizing, order });
   } catch { return Object.freeze({ state: "SAFE_MODE", reason: "LEDGER_RESERVATION_FAILED", sizing, order }); }
   try {
+    const sendNow = context.clock?.() ?? context.now ?? Date.now();
+    if (!Number.isSafeInteger(sendNow) || sendNow < now || plan.expiresAt <= sendNow) throw new Error("PLAN_OR_CLOCK_INVALID_BEFORE_SEND");
+    if (context.journal.entriesPaused?.() !== false) throw new Error("AUTO_ENTRIES_PAUSED_BEFORE_SEND");
     if (plan.entryMethod === "MARKET") {
-      const sendNow = context.clock?.() ?? context.now ?? Date.now();
-      if (plan.expiresAt <= sendNow) throw new Error("PLAN_EXPIRED_BEFORE_SEND");
       boundedMarketPrice(plan, context.marketQuote, rules.tickSize, sendNow, true);
     }
     const exchange = await gateway.submit(order);

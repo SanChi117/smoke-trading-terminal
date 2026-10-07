@@ -6,7 +6,7 @@ Covers: public USD-M Futures history, chart interaction, timeframe and symbol is
 Description: Verify real market data is rendered for the selected instrument.
 Steps:
 1. Open terminal and wait for the BTCUSDT 15m history.
-2. Focus the chart and use +, -, arrow keys, R, Home and End. Toggle EMA20. Pan to a historical region and note the visible date range.
+2. Focus the chart and use +, -, arrow keys, R, Home and End. Right-click the chart, use reset/fit/latest from its menu and dismiss with Escape. Toggle EMA20 and verify the selection survives refresh and is independent for another workspace/symbol/timeframe. Pan to a historical region and note the visible date range; new candles must not reset this viewport.
 3. Refresh and verify the selected BTCUSDT 15m viewport is restored. Choose ETH and 5m, then return to BTC and 15m.
 Expected: Candles and OHLC values remain visible. Keyboard zoom/pan/reset work when the chart has focus. Reload and instrument switching preserve the BTC 15m historical viewport independently of ETH 5m.
 
@@ -57,7 +57,7 @@ Expected: Successful direct Futures data may still render; otherwise a visible e
 
 
 
-Extended acceptance within Test 1: also select 1m and 1M, inspect the correct interval label, and confirm price labels follow the instrument tick precision. Extended acceptance within Test 2: use Поиск монеты, favorites, and workspace switching. System module statuses must not claim connected live execution.
+Extended acceptance within Test 1: also select 1m and 1M, inspect the correct interval label, and confirm price labels follow the instrument tick precision. With loaded candles, enter Рисовать, add a note and a line, open Рисунки, edit the note, lock the line, clear unlocked drawings, then undo and redo. Refresh and switch symbol/workspace to verify drawings remain isolated and the locked line survives clearing. A note must not blank or crash the chart. Extended acceptance within Test 2: use Поиск монеты, favorites, and workspace switching. System module statuses must not claim connected live execution.
 
 ## Test 6 - Inspect research observation and guard private journal
 Viewport: desktop (1280x800)
