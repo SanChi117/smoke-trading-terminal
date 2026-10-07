@@ -127,3 +127,11 @@ V5/QFVG logic is frozen. AUTO-LIVE remains disabled. No claim of full specificat
 - Added public dual-socket Guardian research worker with bounded reconnect, stale/open watchdogs, generation fencing, recorded restart/disconnect/sample events, exclusive bounded capture and fail-stop on capture/pipeline failure. Synthetic captured events replay through the real pipeline to identical durable decisions. No execution gateway is present.
 - Validation: production build, 156 primary JS tests plus 25 accounting/stream tests (181 total), lint and focused runtime typecheck passed. New transport cases use fake endpoints; no live/private exchange calls, real orders or Telegram messages. No actual long-duration capture or VPS deployment was run.
 - Remaining: coordinated account/user-stream/position lifecycle, STOP/LADDER entries, autonomous AI-plan-execution runtime, production PostgreSQL and complete cost/PnL ingestion, captured-market calibration/promotion, full native chart/UI and authenticated hosted acceptance, actual VPS deployment. Main remains unchanged after prior automatic approval rejection; review branch is the persistence target. Published AppDeploy UI unchanged.
+
+## 2026-10-07 chart viewport and unavailable-data UI
+
+- Preserved per-workspace/symbol/timeframe timestamp viewport, keyboard zoom/pan/reset/fit/live controls and one-time historical trade focus (refresh no longer repeatedly snaps back).
+- Fixed the empty-chart overlay covering the wrapped toolbar and the strategy panel showing perpetual loading after data failure.
+- Production build + 156 primary / 27 posttest JavaScript tests (183 total) and lint passed. Previous remote a8444f0 passed all three workflows.
+- Published AppDeploy snapshot 1791386947935; ready with empty frontend/backend/QA error arrays. Browser verified accessible toolbar and accurate unavailable-analysis state. Binance returned 451 in this browser environment, so real-candle interaction/reload acceptance remains blocked; no access-control workaround attempted. A completed hosted E2E suite is not claimed.
+- The broader remaining implementation/acceptance gates listed above remain open. AUTO-LIVE stays disabled; no private exchange or Telegram calls.

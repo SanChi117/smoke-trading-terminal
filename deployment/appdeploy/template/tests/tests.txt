@@ -6,9 +6,9 @@ Covers: public USD-M Futures history, chart interaction, timeframe and symbol is
 Description: Verify real market data is rendered for the selected instrument.
 Steps:
 1. Open terminal and wait for the BTCUSDT 15m history.
-2. Zoom and drag the candle chart, toggle EMA20 and return to current time.
-3. Choose ETH and then 5m.
-Expected: Candles and OHLC values are visible, the chart remains usable after zoom/pan, and ETH history replaces BTC under the ETH label.
+2. Focus the chart and use +, -, arrow keys, R, Home and End. Toggle EMA20. Pan to a historical region and note the visible date range.
+3. Refresh and verify the selected BTCUSDT 15m viewport is restored. Choose ETH and 5m, then return to BTC and 15m.
+Expected: Candles and OHLC values remain visible. Keyboard zoom/pan/reset work when the chart has focus. Reload and instrument switching preserve the BTC 15m historical viewport independently of ETH 5m.
 
 ## Test 2 - Sort scanner and open a symbol on mobile
 Viewport: mobile (375x667)
@@ -37,7 +37,7 @@ Covers: backtest selection/results, historical trade chart with entry/SL/TP, aud
 Description: Verify backtest results remain tied to their instrument and historical audit is accessible.
 Steps:
 1. Open Бэктест, select 7 дней and run it.
-2. If trades exist, click На график on one and inspect the historical chart, then close it.
+2. If trades exist, click На график on one and inspect its historical candles and Entry/SL/TP. Pan or zoom the focused trade chart and verify a subsequent candle refresh does not snap the viewport back to the trade, then close it.
 3. Open Аудит сделок and return to Терминал.
 Expected: The backtest displays metrics and a trade list (zero trades is valid); any selected trade opens its own historical candles and entry/SL/TP; audit and return navigation work. External market errors must be visible rather than silently showing fabricated results.
 
@@ -53,7 +53,7 @@ Steps:
 1. Open the terminal and click Обновить.
 2. Inspect the chart and strategy plan.
 3. If market history fails, use Повторить загрузку.
-Expected: Successful direct Futures data may still render; otherwise a visible error and retry are provided. No fabricated candles appear and no real-order submission control is exposed; PAPER ONLY remains visible.
+Expected: Successful direct Futures data may still render; otherwise a visible error and retry are provided, the strategy panel states that analysis is unavailable, and the empty-chart overlay does not cover indicator/navigation controls. No fabricated candles appear and no real-order submission control is exposed; PAPER ONLY remains visible.
 
 
 
