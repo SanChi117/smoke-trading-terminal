@@ -2,6 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chartViewKey,parseChartView,restoreChartRange,shiftedChartRange,parseChartLayers,chartIncrementalStart} from '../app/components/chart-view.ts';
 import {readChartLayers,writeChartLayers,subscribeChartLayers} from '../app/components/chart-layer-store.ts';
+import {parseTerminalView,readTerminalView,writeTerminalView} from '../app/components/terminal-view-store.ts';
+test('terminal preferences restore only supported symbols and per-symbol intervals',()=>{
+ const symbols=['BTCUSDT','ETHUSDT'],intervals=['1m','15m','1h'];
+ assert.deepEqual(parseTerminalView('{"selected":"ETHUSDT","timeframes":{"BTCUSDT":"1h","ETHUSDT":"1m","BAD":"1h"}}',symbols,intervals),{selected:'ETHUSDT',timeframes:{BTCUSDT:'1h',ETHUSDT:'1m'}});
+ for(const raw of ['null','broken','[]','{"selected":"BAD","timeframes":{"BTCUSDT":"100h"}}'])assert.deepEqual(parseTerminalView(raw,symbols,intervals),{selected:'BTCUSDT',timeframes:{}});
+});
+test('terminal workspaces retain independent selections even with unavailable browser storage',t=>{
+ const previous=globalThis.window,data=new Map();let deny=false;
+ globalThis.window={dispatchEvent:()=>{},localStorage:{getItem:key=>data.get(key)??null,setItem:(key,value)=>{if(deny)throw Error('denied');data.set(key,value);}}};
+ t.after(()=>{if(previous===undefined)delete globalThis.window;else globalThis.window=previous;});
+ const trading={selected:'ETHUSDT',timeframes:{ETHUSDT:'1h'}},pump={selected:'BTCUSDT',timeframes:{BTCUSDT:'1m'}};
+ writeTerminalView('Trading',trading);writeTerminalView('Pump',pump);
+ assert.deepEqual(JSON.parse(readTerminalView('Trading')),trading);assert.deepEqual(JSON.parse(readTerminalView('Pump')),pump);
+ deny=true;writeTerminalView('Range',trading);assert.deepEqual(JSON.parse(readTerminalView('Range')),trading);
+});
 test('layer store signals saved updates, isolates keys and retains choices when storage is denied',t=>{
  const previous=globalThis.window,target=new EventTarget(),data=new Map();let deny=false,notifications=0;
  globalThis.window={addEventListener:target.addEventListener.bind(target),removeEventListener:target.removeEventListener.bind(target),dispatchEvent:target.dispatchEvent.bind(target),localStorage:{getItem:key=>{if(deny)throw Error('denied');return data.get(key)??null;},setItem:(key,value)=>{if(deny)throw Error('denied');data.set(key,value);}}};
