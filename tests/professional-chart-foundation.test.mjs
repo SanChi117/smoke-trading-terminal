@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 const chart = readFileSync(new URL("../app/components/ProfessionalChart.tsx", import.meta.url), "utf8");
 const terminal = readFileSync(new URL("../app/components/TerminalV6.tsx", import.meta.url), "utf8");
+const legacy = readFileSync(new URL("../app/components/ProLevelChart.tsx", import.meta.url), "utf8");
 
 test("terminal uses the professional chart while retaining legacy drawings", () => {
   assert.match(terminal, /import ProfessionalChart from "\.\/ProfessionalChart"/);
@@ -19,6 +20,17 @@ test("professional chart enables native dense-chart interactions", () => {
   assert.match(chart, /lockVisibleTimeRangeOnResize: true/);
   assert.match(chart, /scrollToRealTime/);
   assert.match(chart, /fitContent/);
+  assert.match(chart, /setVisibleRange/);
+  assert.match(chart, /К дате/);
+});
+
+test("workspaces, full timeframe range and scanner controls are persisted", () => {
+  for (const timeframe of ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]) assert.match(terminal, new RegExp(`"${timeframe}"`));
+  assert.match(terminal, /smoke-workspace/);
+  assert.match(terminal, /smoke-favorites/);
+  assert.match(terminal, /scanSort/);
+  assert.match(terminal, /scanFilter/);
+  assert.match(legacy, /smoke-drawings:\$\{workspace\}:\$\{symbol\}:\$\{timeframe\}/);
 });
 
 test("streaming updates do not recreate the chart or all series", () => {

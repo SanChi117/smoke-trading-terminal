@@ -22,10 +22,17 @@ interface ExecutionContext {
 const BINANCE_FUTURES_ORIGIN = "https://fapi.binance.com";
 const BINANCE_PROXY_PREFIX = "/api/binance";
 const ALLOWED_BINANCE_PATHS = new Set([
+  "/fapi/v1/exchangeInfo",
   "/fapi/v1/klines",
   "/fapi/v1/ticker/24hr",
+  "/fapi/v1/premiumIndex",
+  "/fapi/v1/openInterest",
+  "/futures/data/openInterestHist",
+  "/fapi/v1/aggTrades",
+  "/fapi/v1/ticker/bookTicker",
+  "/fapi/v1/depth",
 ]);
-const ALLOWED_INTERVALS = new Set(["1w", "1d", "4h", "15m", "5m"]);
+const ALLOWED_INTERVALS = new Set(["1M", "1w", "1d", "4h", "1h", "15m", "5m", "1m"]);
 
 function jsonError(message: string, status: number): Response {
   return new Response(JSON.stringify({ error: message }), {
@@ -43,6 +50,7 @@ function validInteger(value: string | null): boolean {
 
 type BinanceRequest = Readonly<{ futures: URL }>;
 
+
 function buildBinanceUpstream(url: URL): BinanceRequest | Response {
   const upstreamPath = url.pathname.slice(BINANCE_PROXY_PREFIX.length);
   if (!ALLOWED_BINANCE_PATHS.has(upstreamPath)) {
@@ -50,8 +58,12 @@ function buildBinanceUpstream(url: URL): BinanceRequest | Response {
   }
 
   const futures = new URL(upstreamPath, BINANCE_FUTURES_ORIGIN);
+  const symbol = (url.searchParams.get("symbol") ?? "").toUpperCase();
+  if (symbol && !/^[A-Z0-9]{5,20}$/.test(symbol)) return jsonError("Invalid symbol", 400);
+  if (upstreamPath !== "/fapi/v1/exchangeInfo" && upstreamPath !== "/fapi/v1/ticker/24hr" && upstreamPath !== "/fapi/v1/premiumIndex" && upstreamPath !== "/fapi/v1/ticker/bookTicker" && !symbol) {
+    return jsonError("Symbol is required", 400);
+  }
   if (upstreamPath === "/fapi/v1/klines") {
-    const symbol = (url.searchParams.get("symbol") ?? "").toUpperCase();
     const interval = url.searchParams.get("interval") ?? "";
     const limitText = url.searchParams.get("limit") ?? "500";
     const limit = Number(limitText);
@@ -66,11 +78,21 @@ function buildBinanceUpstream(url: URL): BinanceRequest | Response {
     if (!validInteger(startTime) || !validInteger(endTime)) return jsonError("Invalid time range", 400);
 
     for (const upstream of [futures]) {
+      if (!upstream) continue;
       upstream.searchParams.set("symbol", symbol);
       upstream.searchParams.set("interval", interval);
       upstream.searchParams.set("limit", String(limit));
       if (startTime) upstream.searchParams.set("startTime", startTime);
       if (endTime) upstream.searchParams.set("endTime", endTime);
+    }
+  } else {
+    const limitText = url.searchParams.get("limit");
+    if (limitText && (!/^\d+$/.test(limitText) || Number(limitText) < 1 || Number(limitText) > 1000)) return jsonError("Invalid limit", 400);
+    for (const upstream of [futures]) {
+      if (!upstream) continue;
+      for (const [key, value] of url.searchParams) {
+        if (["symbol", "limit", "period", "startTime", "endTime"].includes(key)) upstream.searchParams.set(key, key === "symbol" ? value.toUpperCase() : value);
+      }
     }
   }
 

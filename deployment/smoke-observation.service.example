@@ -1,0 +1,25 @@
+[Unit]
+Description=SMOKE read-only market observation
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smoke
+Group=smoke
+WorkingDirectory=/opt/smoke-trading-terminal
+EnvironmentFile=/etc/smoke/observe.env
+StateDirectory=smoke-observe
+StateDirectoryMode=0750
+ExecStart=/usr/bin/node --experimental-strip-types scripts/run-observation-server.mjs /var/lib/smoke-observe/ledger.sqlite ${SMOKE_OBSERVE_SYMBOLS}
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/smoke-observe
+
+[Install]
+WantedBy=multi-user.target

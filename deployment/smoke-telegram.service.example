@@ -1,0 +1,25 @@
+[Unit]
+Description=SMOKE Telegram notification and command worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=smoke
+Group=smoke
+WorkingDirectory=/opt/smoke-trading-terminal
+EnvironmentFile=/etc/smoke/observe.env
+StateDirectory=smoke-observe
+StateDirectoryMode=0750
+ExecStart=/usr/bin/node --experimental-strip-types scripts/run-telegram-worker.mjs /var/lib/smoke-observe/ledger.sqlite
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=45
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/smoke-observe
+
+[Install]
+WantedBy=multi-user.target

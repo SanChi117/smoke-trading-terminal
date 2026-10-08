@@ -6,7 +6,7 @@ export async function fetchFuturesPublic(
   path: string,
   options: { signal?: AbortSignal; fetcher?: typeof fetch; browser?: boolean; timeoutMs?: number } = {},
 ): Promise<Response> {
-  if (!/^\/fapi\/v1\/(klines|ticker\/24hr)(\?|$)/.test(path)) throw new Error("Unsupported public Futures endpoint");
+  if (!/^\/futures\/data\/openInterestHist(\?|$)/.test(path) && !/^\/fapi\/v1\/(klines|ticker\/24hr|premiumIndex|openInterest|ticker\/bookTicker|exchangeInfo|aggTrades|depth)(\?|$)/.test(path)) throw new Error("Unsupported public Futures endpoint");
   const fetcher = options.fetcher ?? fetch;
   const bases = (options.browser ?? typeof window !== "undefined") ? [DIRECT_REST, BROWSER_REST] : [DIRECT_REST];
   let lastError: unknown = new Error("Binance Futures unavailable");
@@ -27,8 +27,12 @@ export async function fetchFuturesPublic(
         throw new Error("Unverified Futures source");
       }
       const body = await response.text();
-      if (!Array.isArray(JSON.parse(body))) throw new Error("Invalid Futures payload");
-      return new Response(body, { status: response.status, headers: response.headers });
+      const payload = JSON.parse(body);
+      const arrayRequired = path.startsWith("/futures/data/openInterestHist?") || /^\/fapi\/v1\/(klines|ticker\/24hr|aggTrades)(\?|$)/.test(path);
+      if (arrayRequired ? !Array.isArray(payload) : !payload || typeof payload !== "object" || "code" in payload) throw new Error("Invalid Futures payload");
+      const headers = new Headers(response.headers);
+      headers.set("x-smoke-market-source", "BINANCE_USDS_M");
+      return new Response(body, { status: response.status, headers });
     } catch (error) {
       options.signal?.throwIfAborted();
       lastError = error;

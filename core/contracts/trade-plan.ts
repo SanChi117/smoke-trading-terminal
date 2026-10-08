@@ -13,6 +13,7 @@ export type TradePlanInput = {
   mechanism: string;
   entryMethod: "MARKET" | "LIMIT" | "STOP" | "LADDER";
   entryPrices: number[];
+  maxEntrySlippageBps?: number;
   naturalInvalidation: string;
   initialStop: number;
   exitMode: string;
@@ -32,11 +33,15 @@ export type TradePlan = Readonly<TradePlanInput & { revision: 1; decision: "TRAD
 export function compileTradePlan(input: TradePlanInput): TradePlan {
   if (!input.planId || !input.decisionId || !input.dataSnapshotId) throw new Error("MISSING_CAUSAL_ID");
   const symbol = normalizeSymbol(input.symbol);
+  if (input.maxEntrySlippageBps !== undefined && (!Number.isFinite(input.maxEntrySlippageBps) || input.maxEntrySlippageBps < 0 || input.maxEntrySlippageBps >= 10000)) throw new Error("INVALID_ENTRY_SLIPPAGE");
+  if (!['LONG', 'SHORT'].includes(input.side)) throw new Error('INVALID_SIDE');
+  if (!['MARKET', 'LIMIT', 'STOP', 'LADDER'].includes(input.entryMethod)) throw new Error('INVALID_ENTRY_METHOD');
   if (!input.entryPrices.length || input.entryPrices.some((price) => !Number.isFinite(price) || price <= 0)) throw new Error("INVALID_ENTRY");
   if (!Number.isFinite(input.initialStop) || input.initialStop <= 0) throw new Error("INVALID_STOP");
+  if (input.entryPrices.some(price => input.side === 'LONG' ? input.initialStop >= price : input.initialStop <= price)) throw new Error('STOP_WRONG_SIDE');
   if (!Number.isFinite(input.marginCapUsdt) || input.marginCapUsdt <= 0 || input.marginCapUsdt > 1) throw new Error("AUTO_MARGIN_CAP_EXCEEDED");
   if (!Number.isFinite(input.leverage) || input.leverage < 1) throw new Error("INVALID_LEVERAGE");
-  if (input.expiresAt <= input.createdAt) throw new Error("INVALID_EXPIRY");
+  if (![input.createdAt, input.expiresAt].every(Number.isFinite) || input.expiresAt <= input.createdAt) throw new Error("INVALID_EXPIRY");
   if (!input.allowedActions.length || !input.forbiddenActions.length) throw new Error("MISSING_ACTION_POLICY");
   const plan = {
     ...input,
