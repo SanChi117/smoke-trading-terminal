@@ -25,6 +25,21 @@
 
 ---
 
+## Webhook checkpoint — 2026-10-12 (AppDeploy v17)
+
+- **AppDeploy source access recovered:** version history v1–v17 readable; v15 is the original deployed baseline, v16 introduced a no-execution webhook; v17 added owner-isolated read-only candidate audit. AppDeploy status after v17: READY, no QA frontend/backend errors reported. Both old strategies and chart/navigation were retained through incremental AppDeploy updates.
+- **Source divergence confirmed by content:** 40 file paths overlap GitHub/AppDeploy, but chart/level-analysis/UI implementations differ; nine brains/contracts modules were found identical by direct content comparison. Never overwrite this deployed Vite/React app with GitHub's Next/Vinext layout.
+- **GitHub Pine transport:** [v3.6.3 webhook radar](research/tradingview/Strategy_V2_2_Radar_LuxAlgo_v363_webhook.pine) adds an owner UUID and shared secret fields to the original unchanged v3.6.2 strategy logic, with alert emission only when inputs are present. This new Pine variant has not been compiled or installed in the user's TradingView account.
+- **AppDeploy backend:** authenticated owner-only `GET /api/tradingview/status` and `GET /api/tradingview/candidates`; `POST /api/webhooks/tradingview` validates `tv_shared_secret`, signal schema, closed 15m bar, idempotency, and stores candidate in the owner's isolated partition without secret. A/C candidate only; no live exchange calls.
+- **User-visible AppDeploy diagnostic UI:** `#alerts` tab showing owner UUID, secret status, incoming candidates and non-executable status.
+- **GitHub tests:** updated nine V2.2 parser tests and owner-id stripping; [terminal-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38284898365) and [level-flow-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38284898234) at commit `6a8a5594`. The subsequent docs-only commit does not change behavior.
+- **Owner setup PENDING:** server secret `TV_WEBHOOK_SHARED_SECRET` is not configured. A one-time secure AppDeploy secret-entry link was created; entry must be submitted by owner and then attached with `set_app_secrets`. Owner must paste v3.6.3 into TradingView and configure alert webhook. [Exact setup/runbook](docs/TV_V22_DEPLOYED_SETUP.md).
+- **Important no-overclaim:** endpoint deployment verified, not yet authenticated by a real TradingView alert nor approved by full V2.2. Zero evidence of installed Pine, completed source backup, independent background analysis, real order engine, or successful AUTO-LIVE.
+- **Backup gap:** AppDeploy version history is available, but a complete independent source archive of all 68 files is not yet confirmed. Earlier public-repo Git tree staging was interrupted by safety screening and must not be treated as a backup.
+- Next: owner secret binding + real closed-15m alert proof; implement durable explicit candidate→V2.2 independent Binance review→arbiter event pipeline, without forcing unrelated Brains to concur. Keep AUTO_OBSERVE.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
