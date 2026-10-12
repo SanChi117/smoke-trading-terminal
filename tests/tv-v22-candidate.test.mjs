@@ -12,6 +12,8 @@ function valid(overrides = {}) {
   return {
     id: 'BTCUSDT_15_' + T + '_' + zone_id,
     version: 'v3.6.2-v2.2-radar',
+    owner_user_id: '12345678-1234-1234-1234-123456789abc',
+    tv_shared_secret: 'unit-test-nonproduction-transport-key',
     status: 'CANDIDATE',
     symbol: 'BTCUSDT',
     tv_symbol: 'BINANCE:BTCUSDT.P',
@@ -42,6 +44,8 @@ function throws(payload, code) {
 test('accepts v3.6.2 JSON as candidate only and never authorizes execution', () => {
   const x = parse(JSON.stringify(valid()));
   assert.equal(x.status, 'CANDIDATE');
+  assert.equal(x.ownerUserId, '12345678-1234-1234-1234-123456789abc');
+  assert.equal('tv_shared_secret' in x, false);
   assert.equal(x.side, 'LONG');
   assert.equal(x.qtyEstimate, 0.01);
   assert.equal(x.executionAuthorized, false);
@@ -55,6 +59,12 @@ test('accepts a correctly signed SHORT hypothesis on an independent zone', () =>
     zone_id, action: 'sell', entry: 43250, sl: 43800, tp: 41300, rr_net: 2.5,
   }));
   assert.equal(x.side, 'SHORT');
+});
+test('rejects missing owner identifier, never leaks the transport secret', () => {
+  throws(valid({ owner_user_id: '' }), 'INVALID_OWNER_ID');
+  throws(valid({ owner_user_id: 'other-user' }), 'INVALID_OWNER_ID');
+  const x = parse(valid());
+  assert.equal('tv_shared_secret' in x, false);
 });
 test('rejects malformed payload and unsupported version', () => {
   throws('{"broken":', 'INVALID_JSON');
