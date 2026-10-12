@@ -1,13 +1,13 @@
 # SMOKE PILOT 5 — без VPS (AppDeploy)
 Date: 2026-10-12
 Last updated: 2026-10-12
-Status: **Deployed v20 / 15m scheduler enabled, first production cycle still awaiting readback**
+Status: **AppDeploy v23 — 15m research + paper model deployed; first cron successes observed, per-symbol authenticated readback pending**
 
 ## Purpose and boundaries
 Run a **small-universe** research trial without provisioning a new VPS or buying TradingView Premium. Reduce breadth **only**; do not simplify entry/zone/risk criteria. This pilot is an additive view in the **existing** `SMOKE Trading Terminal`, not a duplicate product or a replacement codebase.
 
 AppDeploy app: `smoke-trading-terminal-0kl792`
-Deployed version: `v20` / `1791829919597`
+Deployed version: `v23` / `1791830908050`
 Pilot UI: https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#pilot
 Original UI: https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#terminal
 
@@ -20,12 +20,13 @@ Original UI: https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#terminal
 - `db.tx.add('pilot_v5_research_runs', [...])` uses chosen stable physical IDs per symbol/closed candle and reconciles duplicate IDs with consistent reads to avoid falsely counting a retry as a new signal. Database records contain public-market evidence and no credentials/account data.
 - Authenticated API: `GET /api/pilot/config` and `GET /api/pilot/runs` (bounded pagination). UI `#pilot` shows five-symbol status, latest V5 assessments, READY histories, and errors. The original terminal remains at `#terminal`.
 - Browser may close between scheduled cycles. AppDeploy service, external Binance access, and quota remain required.
+- A separate research-only PAPER lifecycle is deployed: deterministic [engine and acceptance constraints](PAPER_LIFECYCLE_V1_ACCEPTANCE_2026-10-12.md), per-symbol revisioned state and last-80 closed model trades, owner-authenticated read-only UI in `#pilot`. Virtual entries use real after-signal bid/ask with adverse slippage; exits use future *closed 1m* candles with stop-first priority, explicit coverage warnings, modeled taker fees and gross/net R.
 
 ## Not yet implemented, proven or claimed
-- **No proof yet that the first cron execution successfully fetched all five symbols, stored the results or displayed them.** Scheduler enabled and deployment READY are necessary but not sufficient.
+- **Server scheduler success observed**, including the first run after wiring state transitions, and AppDeploy v23 deployment reports READY with empty frontend/backend QA error lists. **Per-symbol authenticated readback of five OK/error records and paper states remains unverified.**
 - **Not a V2.2 port.** Pine v3.6.3 remains a TradingView diagnostic adapter; full zone/touch→reaction→BOS→retest parity on the server is a distinct task.
 - No money execution, private exchange adapter, stop orders, fully working Exit Guardian, automatic order sizing, or actual risk-bearing trades.
-- No fully faithful broker-like **PAPER fill engine** yet (latency, next-bar entry, order rejection, funding, fees, slippage, stop-first rules, position accounting). V5 READY represents a strategy hypothesis, not a demonstrated executed paper fill.
+- **PAPER model v1 exists** but is not a fully faithful exchange simulator: funding, liquidation, partial real fills, the entry minute's incomplete price path, orderbook slippage dynamics and true exchange commissions are not fully modeled. Model PnL is approximated; V5 READY alone remains a hypothesis and does not auto-open real orders.
 - Even a cron launched ~3 minutes after a bar closes cannot claim a fill at the bar-close price. Any paper execution must use later executable market prices, known latency, fees and slippage, and avoid lookahead.
 - The AppDeploy backend differs from GitHub Next/Vinext; all existing UI/source must be preserved and reconciled separately before a later VPS migration.
 - No uptime guarantee, no guarantee of 1–2 trades/day, and no guarantee of 5–7R profitable outcomes.
@@ -34,7 +35,7 @@ Original UI: https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#terminal
 ## Acceptance plan
 1. Inspect the first scheduled execution and verify five OK/ERROR rows in `#pilot` after authenticated sign-in. Confirm 15m close chronology and no fabrication.
 2. Compare a symbol/time candle with the original browser V5 on exactly the same closed bars; log parity and discrepancies.
-3. Add an explicit paper order lifecycle to the **same** engine using immutable plans, next executable price, protective SL and conservative same-bar stop priority, fees/slippage, stale-data skips and recovery.
+3. Verify deployed PAPER state transitions end to end (FLAT → OPEN → CLOSED), deduplication and revision consistency through at least one real cycle per state; inspect replay gaps and modeled fee/slippage assumptions. The pure deterministic simulator is now installed and GitHub tested.
 4. Reproduce V2.2 fully from the Pine specification with identical closed-bar fixture comparisons (not generic EMA/ATR imitation).
 5. Add independent challenger brains and arbiter decision trail **without mandatory agreement**. Do not mistake confidence score for probability.
 6. Verify across regimes and sample windows; observe platform credit usage; only then migrate validated source to VPS if the owner chooses.
