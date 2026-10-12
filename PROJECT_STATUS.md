@@ -40,6 +40,19 @@
 
 ---
 
+## Pilot checkpoint — 2026-10-12 (AppDeploy v19: 5-symbol scheduled V5 research)
+
+- **User requested no VPS and no Premium/100 manual TradingView alerts** while proving the system with a handful of coins. Decision: reduce universe only, preserve original strategy logic. See [pilot acceptance + limitations](docs/SMOKE_PILOT5_APPDEPLOY_2026-10-12.md).
+- On existing AppDeploy app `smoke-trading-terminal-0kl792` deployed **v19** (snapshot `1791829086387`). Existing site retained; new [`#pilot` research dashboard](https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#pilot) includes status/freshness, error visibility, V5 READY records and entry/stop/target/RR as proposals.
+- Cron named `smoke-pilot-v5-hourly` `3 * * * *` UTC is **enabled** in AppDeploy and can run without an open browser; backend `pilotV5HourlyHandler` invokes original `analyzeLevelFlow` V5 over five Binance USD-M symbols (BTC/ETH/SOL/LINK/SUI).
+- Each hourly sample fetches full required 1w/1d/4h/15m/5m context per symbol and evaluates all four 15m **closed** bars from the last hour as-of their close timestamp. A compact public research record per symbol is saved to AppDeploy DB, with explicit failures.
+- **IMPORTANT verification gap:** scheduled job enabled, AppDeploy deployment `ready` and QA frontend/backend empty do **not** establish that a completed scheduled cycle succeeded or was persisted. First actual cron readback is next acceptance step.
+- **PAPER RESEARCH ONLY**, not a full paper trading execution simulator. No V2.2 port, no private Binance API, no real orders, no AI consensus requirement, no paper fill/PnL ledger yet. Server learning claims/expected frequency are not warranted.
+- AppDeploy requests and database usage may be quota-limited. Start with only five symbols and once-hourly research. Ensure costs are checked and do not disguise delayed retrospective 15m analysis as on-time order opportunity.
+- AppDeploy source versions remain separate from GitHub repository; the documentation is in `main` but source import/migration is **not yet synchronized**.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
