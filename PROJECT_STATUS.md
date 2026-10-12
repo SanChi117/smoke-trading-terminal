@@ -65,6 +65,19 @@
 
 ---
 
+## Mechanics-first checkpoint — 2026-10-12 (AppDeploy v23 / PAPER lifecycle v1)
+
+- **Owner priority:** mechanics and correctness first; defer speed/frequency/universe expansion and new VPS.
+- Active AppDeploy deployment is `v23`, snapshot `1791830908050`, with [Pilot UI](https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#pilot). `get_app_status`: READY, no reported frontend/backend QA errors. The 15m cron `smoke-pilot-v5-closed15m` remains enabled.
+- The cron `last_run=1791830902` returned `success` after the PAPER transition code was connected. This confirms handler completion; **does not prove all five symbols produced good market data or that any real PAPER trade occurred**. First per-symbol readback still pending.
+- New pure deterministic module [paper-lifecycle](core/paper/paper-lifecycle.ts): quote-based **post-signal** entry; simulated taker fee 0.04%/side, adverse slippage 0.02%/side, max 50 USDT virtual notional/0.5 USDT pre-fee stop risk; future closed 1m bars for exits; STOP wins tie; adverse stop gap fill; no lookahead on incomplete bars; missing history → explicit HALTED state.
+- [Unit tests](tests/paper-lifecycle.test.mjs) for time/pricing/direction, short/long stop, same-bar tie, gap, net costs, missing/future 1m. [GitHub terminal-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38292661400), [level-flow-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38292661426), exact commit `5d72a84b`.
+- AppDeploy has `backend/pilot-paper.ts` (persistent per-symbol `pilot_paper_v1` with CAS `revision`, open position, previous 80 virtual closes, simulated net PnL, error/status flags) and `GET /api/pilot/paper` requiring sign-in. `#pilot` now renders PAPER positions, exits and warnings. No real Binance account, API key, broker submit, stop order or live mode.
+- **Accuracy caveat:** the first partially observed 1m interval following virtual entry is unobserved; funding/liquidation/real fill constraints not covered. PnL is **illustrative**, not demonstrated executable returns. Incomplete data halts position settlement.
+- Full mechanics acceptance checklist: [PAPER_LIFECYCLE_V1_ACCEPTANCE_2026-10-12.md](docs/PAPER_LIFECYCLE_V1_ACCEPTANCE_2026-10-12.md). Next actions are authorized journal readback, state transition/restart/retry proof, Pine V2.2 parity; do **not** enlarge universe or accelerate polling yet.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
