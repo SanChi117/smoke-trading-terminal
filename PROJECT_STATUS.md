@@ -13,6 +13,18 @@
 ---
 
 
+## Progress checkpoint — 2026-10-12 (candidate contract + CI recovery)
+
+- Validated **68 previously reported AppDeploy source paths** against the GitHub tree: **40 shared names, 28 AppDeploy-only paths**. Source contents for the 40 shared names are not yet compared. See [source reconciliation manifest](docs/APPDEPLOY_SOURCE_DELTA_2026-10-12.md).
+- Added new standalone `core/contracts/tv-v22-candidate.mjs` and `tests/tv-v22-candidate.test.mjs` for the actual Pine v3.6.2 JSON format. Integrated the new cases into the mandatory `npm test` script. **This is a candidate parser, not a webhook server or an executable order**.
+- [TV V2.2 ingress contract](docs/TV_V22_INGRESS_CONTRACT.md) explicitly documents authentication, persistence, duplicate prevention, independent V2.2 analysis, risk validation and remaining work.
+- **CI verification:** `terminal-ci` passed for commit `63b2e9e0` (includes all eight new parser tests). The separate `level-flow-ci` failed because of an existing ESLint violation in `ProfessionalChart.tsx` (setState directly from candle-sync effect), despite 78/78 JS tests passing.
+- Fixed the chart's synchronous effect state reset, replacing it with derived hover validity, commit `ec553b57`. Verified [terminal-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38277920492) and [level-flow-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38277920451) for that exact commit. This is source CI only, not AppDeploy rollout.
+- AppDeploy connector `get_apps/get_status/get_versions/src_glob` continues to fail internally on repeated calls. **No full deployed source backup, no site update, and no live orders.**
+- Phase 0 remains **PARTIAL** until the deployed source is exported and checked. Next action when access is restored: source snapshot + checksum + secret review → safe migration path. Parallel source-only work must remain independently tested and never overwrite the published app.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
