@@ -1,0 +1,706 @@
+// Structure V2.2 Radar — LuxAlgo Style [v3.6.2]
+// Pine Script v6. Candidate scanner ONLY; NOT automatic A/A+ approval or order execution.
+// Confirmed HTF pivots, stable zone IDs and 15m touch -> reaction -> BOS -> retest sequence.
+
+//@version=6
+indicator('Structure V2.2 Radar [LuxAlgo Style] v3.6.2', 'V2.2 Radar', overlay = true,
+     max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500, max_bars_back = 500)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// CONSTANTS
+//---------------------------------------------------------------------------------------------------------------------{
+BULLISH = +1
+BEARISH = -1
+
+GREEN   = #089981
+RED     = #F23645
+GRAY    = #878b94
+ORANGE  = #ff9800
+
+SMART_GROUP     = 'Smart Money Concepts'
+RISK_GROUP      = 'Risk Management'
+SIGNAL_GROUP    = 'Trade Signals'
+DISPLAY_GROUP   = 'Display'
+MTF_GROUP       = 'Multi-Timeframe'
+
+//---------------------------------------------------------------------------------------------------------------------}
+// INPUTS
+//---------------------------------------------------------------------------------------------------------------------{
+showInternalsInput  = input(true,  'Show Internal Structure',  group = SMART_GROUP)
+internalBullColor   = input(GREEN, 'Bullish Structure',        group = SMART_GROUP, inline = 'ibull')
+internalBearColor   = input(RED,   '',                         group = SMART_GROUP, inline = 'ibear')
+
+showSwingInput      = input(true,  'Show Swing Structure',     group = SMART_GROUP)
+swingBullColor      = input(GREEN, 'Bullish Swing',            group = SMART_GROUP, inline = 'sbull')
+swingBearColor      = input(RED,   '',                         group = SMART_GROUP, inline = 'sbear')
+
+showOBInput         = input(true,  'Show Order Blocks',        group = SMART_GROUP)
+obBullBorder        = input.color(#5db49e, 'Bullish OB Border', group = SMART_GROUP, inline = 'obbull')
+obBullBg            = input.color(color.new(#64C4AC, 90), 'BG', group = SMART_GROUP, inline = 'obbull')
+obBearBorder        = input.color(#4760bb, 'Bearish OB Border', group = SMART_GROUP, inline = 'obbear')
+obBearBg            = input.color(color.new(#506CD3, 90), 'BG', group = SMART_GROUP, inline = 'obbear')
+
+showFVGInput        = input(true,  'Show Fair Value Gaps',     group = SMART_GROUP)
+fvgFilterInput      = input.float(0.3, 'FVG Min Size (%)',     group = SMART_GROUP, minval = 0.0, maxval = 5.0, step = 0.1)
+fvgMaxCountInput    = input.int(6, 'Max FVG Count',            group = SMART_GROUP, minval = 2, maxval = 20)
+fvgBullColor        = input.color(#14be94, 'FVG Bull Color',   group = SMART_GROUP)
+fvgBearColor        = input.color(color.rgb(194, 25, 25), 'FVG Bear Color', group = SMART_GROUP)
+
+balanceInput        = input.float(500.0, 'Account Balance ($)', group = RISK_GROUP, minval = 10)
+riskPctInput        = input.float(1.0, 'Risk per Trade (%)',    group = RISK_GROUP, minval = 0.1, maxval = 10, step = 0.1)
+maxPositionsInput   = input.int(2, 'Max Simultaneous Signals (chart only)',        group = RISK_GROUP, minval = 1, maxval = 5)
+
+confirmationInput   = input.string('Bar Close', 'Entry Confirmation', group = SIGNAL_GROUP,
+                         options = ['Bar Close'])
+stopBufferInput     = input.float(1.5, 'Stop Buffer (x ATR)',   group = SIGNAL_GROUP, minval = 0.5, maxval = 5.0, step = 0.1)
+minRRInput          = input.float(2.0, 'Min Clean RR',          group = SIGNAL_GROUP, minval = 1.0, maxval = 5.0, step = 0.1)
+maxZoneAgeInput     = input.int(20, 'Max Zone Age (days)',      group = SIGNAL_GROUP, minval = 1, maxval = 90)
+maxTestsInput       = input.int(2, 'Max Zone Tests',            group = SIGNAL_GROUP, minval = 1, maxval = 5)
+zoneDistInput       = input.float(1.5, 'Min Same-TF Zone Distance (%)', group = SIGNAL_GROUP, minval = 0.2, maxval = 5.0, step = 0.1)
+confluencePctInput  = input.float(1.0, '4H / 1D Confluence Distance (%)', group = SIGNAL_GROUP, minval = 0.1, maxval = 3.0, step = 0.1)
+reactionAtrInput    = input.float(0.25, 'Minimum Reaction (ATR)', group = SIGNAL_GROUP, minval = 0.05, maxval = 2.0, step = 0.05)
+bosLookbackInput    = input.int(8, 'Pre-touch BOS Lookback (15m bars)', group = SIGNAL_GROUP, minval = 3, maxval = 40)
+retestAtrInput      = input.float(0.20, 'BOS Retest Tolerance (ATR)', group = SIGNAL_GROUP, minval = 0.0, maxval = 1.0, step = 0.05)
+maxSequenceBars     = input.int(40, 'Max Touch-to-Retest Bars', group = SIGNAL_GROUP, minval = 6, maxval = 150)
+tpBufferPctInput    = input.float(0.2, 'TP Before HTF Barrier (%)', group = SIGNAL_GROUP, minval = 0.05, maxval = 2.0, step = 0.05)
+commissionInput     = input.float(0.05, 'Commission per side (%)', group = SIGNAL_GROUP, minval = 0.0, maxval = 1.0, step = 0.01)
+slippageInput       = input.float(0.05, 'Slippage (%)',          group = SIGNAL_GROUP, minval = 0.0, maxval = 1.0, step = 0.01)
+
+signalBullColor     = input(GREEN, 'Long Signal',   group = SIGNAL_GROUP, inline = 'sig')
+signalBearColor     = input(RED,   'Short Signal',  group = SIGNAL_GROUP, inline = 'sig')
+
+useMTFInput         = input(true, 'Use Confirmed 1D + 4H Zones', group = SIGNAL_GROUP)
+
+showSLTPInput       = input(true,  'Show SL / TP Lines',       group = DISPLAY_GROUP)
+slColorInput        = input(RED,   'SL Color',                  group = DISPLAY_GROUP)
+tpColorInput        = input(GREEN, 'TP Color',                  group = DISPLAY_GROUP)
+showCalcInput       = input(true,  'Show Calculation Label',    group = DISPLAY_GROUP)
+calcColorInput      = input(ORANGE, 'Calc Label Color',         group = DISPLAY_GROUP)
+
+require1W           = input.bool(false, 'Require 1W Trend Aligned (context)', group = MTF_GROUP)
+require1D           = input.bool(true,  'Require 1D Trend Aligned', group = MTF_GROUP)
+require4H           = input.bool(true,  'Require 4H Trend Aligned', group = MTF_GROUP)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// TYPES
+//---------------------------------------------------------------------------------------------------------------------{
+// Zone grade 1 = visual 15m zone, 2 = confirmed HTF pivot, 3 = 4H/1D confluence.
+// These are objective radar proxies, NOT an analyst-certified V2.2 S2/S3 rating.
+// stage: 0 fresh, 1 touched, 2 reacted, 3 BOS, 4 retest validated, 5 used.
+type zone
+    float level
+    float top
+    float bottom
+    int   createdBar
+    int   createdTime
+    int   originTime
+    string sourceTF
+    string uid
+    int   bias
+    int   grade
+    int   testCount
+    int   stage
+    int   touchBar
+    int   reactionBar
+    int   bosBar
+    int   retestBar
+    float bosLevel
+    bool  broken
+    bool  used
+    box   visualBox
+
+type swingPoint
+    float price
+    float top
+    float bottom
+    int   time
+    int   index
+    int   bias
+
+type openPosition
+    float entry
+    float sl
+    float tp
+    int   bias
+    int   openBar
+    bool  closed
+    line  slLine
+    line  tpLine
+
+type tradeSignal
+    float entry
+    float sl
+    float tp
+    float qty
+    float rr
+    int   bias
+    int   barTime
+
+//---------------------------------------------------------------------------------------------------------------------}
+// VARIABLES
+//---------------------------------------------------------------------------------------------------------------------{
+var array<zone>         zones           = array.new<zone>(0)
+var array<openPosition> positions       = array.new<openPosition>(0)
+var array<tradeSignal>  signalHistory   = array.new<tradeSignal>(0)
+var array<string>       seenZoneIds     = array.new<string>(0) // source + pivot time + direction; survives deletion
+
+var swingPoint          lastSwingHigh   = swingPoint.new(na, na, na, na, na, BEARISH)
+var swingPoint          lastSwingLow    = swingPoint.new(na, na, na, na, na, BULLISH)
+var swingPoint          lastInternalHigh= swingPoint.new(na, na, na, na, na, BEARISH)
+var swingPoint          lastInternalLow = swingPoint.new(na, na, na, na, na, BULLISH)
+
+var int                 lastBosBar      = -50
+var int                 lastChoChBar    = -50
+var int                 lastBullStructureBar = -50
+var int                 lastBearStructureBar = -50
+
+var array<box>          fvgBullBoxes    = array.new<box>(0)
+var array<box>          fvgBearBoxes    = array.new<box>(0)
+
+bool newSignalThisBar   = false
+int  newSignalBias      = 0
+float newSignalEntry    = na
+float newSignalSL       = na
+float newSignalTP       = na
+float newSignalQty      = na
+float newSignalRR       = na
+string newSignalId      = ''
+int    newSignalZoneBar = na
+string newSignalZoneId  = ''
+int    newSignalGrade   = na
+
+//---------------------------------------------------------------------------------------------------------------------}
+// GLOBAL INDICATORS
+//---------------------------------------------------------------------------------------------------------------------{
+float atr14 = ta.atr(14)
+float preTouchHigh = ta.highest(high, bosLookbackInput)[1]
+float preTouchLow  = ta.lowest(low, bosLookbackInput)[1]
+bool chartIs15m = timeframe.isintraday and timeframe.in_seconds(timeframe.period) == 900
+
+ema50  = ta.ema(close, 50)
+ema200 = ta.ema(close, 200)
+trendUp   = ema50 > ema200 and close > ema50
+trendDown = ema50 < ema200 and close < ema50
+
+int trendBias = trendUp ? BULLISH : trendDown ? BEARISH : 0
+
+//---------------------------------------------------------------------------------------------------------------------}
+// MTF TREND (confirmed candles, no repaint)
+//---------------------------------------------------------------------------------------------------------------------{
+getMTFTrend(string tf) =>
+    ema50_mtf  = request.security(syminfo.tickerid, tf, ta.ema(close[1], 50),  lookahead = barmerge.lookahead_on)
+    ema200_mtf = request.security(syminfo.tickerid, tf, ta.ema(close[1], 200), lookahead = barmerge.lookahead_on)
+    close_mtf  = request.security(syminfo.tickerid, tf, close[1], lookahead = barmerge.lookahead_on)
+    int trend = 0
+    if not na(ema50_mtf) and not na(ema200_mtf) and not na(close_mtf)
+        if ema50_mtf > ema200_mtf and close_mtf > ema50_mtf
+            trend := BULLISH
+        else if ema50_mtf < ema200_mtf and close_mtf < ema50_mtf
+            trend := BEARISH
+    trend
+
+trend1W = getMTFTrend('1W')
+trend1D = getMTFTrend('1D')
+trend4H = getMTFTrend('240')
+
+bool trendAligned = (not require1W or trend1W == trendBias) and (not require1D or trend1D == trendBias) and (not require4H or trend4H == trendBias)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// CONFIRMED 4H + 1D PIVOTS: one full HTF bar of offset; pivot's actual source time[4].
+// Stable source timestamp prevents an old HTF pivot from reappearing as a new zone.
+//---------------------------------------------------------------------------------------------------------------------{
+getConfirmedPivots() =>
+    ph = ta.pivothigh(high, 3, 3)
+    pl = ta.pivotlow(low, 3, 3)
+    [ph[1], pl[1], time[4]]
+
+[high4H, low4H, pivotTime4H] = request.security(syminfo.tickerid, '240', getConfirmedPivots(), lookahead = barmerge.lookahead_on)
+[high1D, low1D, pivotTime1D] = request.security(syminfo.tickerid, '1D', getConfirmedPivots(), lookahead = barmerge.lookahead_on)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// FUNCTIONS
+//---------------------------------------------------------------------------------------------------------------------{
+getSwings() =>
+    ph = ta.pivothigh(high, 3, 3)
+    pl = ta.pivotlow(low, 3, 3)
+    [ph, pl]
+
+drawLuxLabel(int t, float p, string txt, color c, string style) =>
+    label.new(chart.point.new(t, na, p), txt, xloc = xloc.bar_time,
+              color = color(na), textcolor = c, style = style, size = size.small)
+
+drawSignalLabel(int barIdx, float p, string txt, color c, string style) =>
+    label.new(chart.point.from_index(barIdx, p), txt, color = color(na),
+              textcolor = c, style = style, size = size.large)
+
+drawStructureLine(int t1, float p1, int t2, float p2, color c, string style) =>
+    lineStyle = style == '----' ? line.style_dashed : line.style_solid
+    line.new(chart.point.new(t1, na, p1), chart.point.new(t2, na, p2),
+             xloc = xloc.bar_time, color = c, style = lineStyle)
+
+// A target is only accepted in the profitable direction and before the nearest
+// *known* opposing 4H/1D structural level; do not invent an RR target.
+findNearestTP(int bias, float entryPrice) =>
+    float nearest = na
+    float minDist = 1e20
+    int zs = array.size(zones)
+    if zs > 0
+        for i = 0 to zs - 1
+            zone z = array.get(zones, i)
+            if z.grade >= 2 and z.bias != bias and not z.broken
+                float barrier = bias == BULLISH ? z.bottom : z.top
+                float dist = bias == BULLISH ? barrier - entryPrice : entryPrice - barrier
+                if dist > 0 and dist < minDist
+                    minDist := dist
+                    nearest := barrier
+    float target = na(nearest) ? na : (bias == BULLISH ? nearest * (1 - tpBufferPctInput / 100.0) : nearest * (1 + tpBufferPctInput / 100.0))
+    target
+
+// Price may trigger stop with slip; qty is an ESTIMATE, not exchange LOT_SIZE-validated.
+calcSignal(float entryPrice, float zoneEdge, float tpLevel, int bias) =>
+    float sl = bias == BULLISH ? zoneEdge - stopBufferInput * atr14 : zoneEdge + stopBufferInput * atr14
+    float riskUsd = balanceInput * riskPctInput / 100.0
+    float rate = (commissionInput + slippageInput) / 100.0
+    float entryCost = entryPrice * rate
+    float slCost = sl * rate
+    float tpCost = tpLevel * rate
+    float grossProfit = bias == BULLISH ? tpLevel - entryPrice : entryPrice - tpLevel
+    float grossLoss = bias == BULLISH ? entryPrice - sl : sl - entryPrice
+    float netProfit = grossProfit - entryCost - tpCost
+    float netLoss = grossLoss + entryCost + slCost
+    float rrNet = netLoss > 0 ? netProfit / netLoss : na
+    float qtyEst = netLoss > 0 ? riskUsd / netLoss : na
+    bool valid = sl > 0 and netProfit > 0 and netLoss > 0 and grossLoss > 0 and (bias == BULLISH ? sl < entryPrice and tpLevel > entryPrice : sl > entryPrice and tpLevel < entryPrice)
+    [sl, qtyEst, rrNet, valid]
+
+isZoneAlive(zone z) =>
+    int maxAgeMs = maxZoneAgeInput * 24 * 60 * 60 * 1000
+    bool tooOld = time - z.createdTime > maxAgeMs
+    bool broken = z.broken or (z.bias == BULLISH and close < z.bottom - atr14 * 0.10) or (z.bias == BEARISH and close > z.top + atr14 * 0.10)
+    bool exhausted = z.stage == 0 and z.testCount >= maxTestsInput
+    not tooOld and not broken and not exhausted
+
+cleanDeadZones() =>
+    int zs = array.size(zones)
+    if zs > 0
+        int i = 0
+        while i < zs
+            zone z = array.get(zones, i)
+            if not isZoneAlive(z)
+                if not na(z.visualBox)
+                    box.delete(z.visualBox)
+                array.remove(zones, i)
+                zs -= 1
+            else
+                i += 1
+    0  // Explicit int return; side effects above must not infer mixed return types.
+
+pruneZones(int maxZones) =>
+    while array.size(zones) > maxZones
+        // Local 15m visual pivots must never evict more important 4H/1D trade zones.
+        int victim = 0
+        for i = 0 to array.size(zones) - 1
+            zone candidate = array.get(zones, i)
+            if candidate.sourceTF == '15'
+                victim := i
+                break
+        zone z = array.remove(zones, victim)
+        if not na(z.visualBox)
+            box.delete(z.visualBox)
+    0  // Explicit int return; side effects above must not infer mixed return types.
+
+// Source-origin ID is recorded regardless of price-based dedup outcome.
+addZone(float level, float top, float bottom, int bias, int originTime, string src) =>
+    bool added = false
+    if not na(level) and not na(originTime) and level > 0 and top > bottom
+        string uid = src + '_' + str.tostring(originTime) + '_' + (bias == BULLISH ? 'L' : 'S')
+        if not array.includes(seenZoneIds, uid)
+            array.push(seenZoneIds, uid)
+            // Keep memory bounded; a repeated very old pivot is in any case time-expired.
+            if array.size(seenZoneIds) > 8000
+                array.shift(seenZoneIds)
+            bool nearbySameSource = false
+            int zs = array.size(zones)
+            if zs > 0
+                for i = 0 to zs - 1
+                    zone other = array.get(zones, i)
+                    if other.sourceTF == src and other.bias == bias and math.abs(other.level - level) / level < zoneDistInput / 100.0
+                        nearbySameSource := true
+                        break
+            if not nearbySameSource
+                color border = bias == BULLISH ? obBullBorder : obBearBorder
+                color bg = bias == BULLISH ? obBullBg : obBearBg
+                int grade = src == '15' ? 1 : 2
+                box b = showOBInput ? box.new(left = bar_index, top = top, bottom = bottom, right = bar_index + 1, border_color = border, border_width = grade > 1 ? 2 : 1, bgcolor = bg, extend = extend.right, text = grade > 1 ? src + ' S2*' : '', text_color = border, text_size = size.tiny) : na
+                array.push(zones, zone.new(level, top, bottom, bar_index, time, originTime, src, uid, bias, grade, 0, 0, na, na, na, na, na, false, false, b))
+                pruneZones(35)
+                added := true
+    added
+
+// S3* is a strictly mechanical proximity tag, not full manual senior-structure validation.
+updateZoneGrades() =>
+    int zs = array.size(zones)
+    if zs > 0
+        for i = 0 to zs - 1
+            zone z = array.get(zones, i)
+            if z.sourceTF != '15'
+                z.grade := 2
+                for j = 0 to zs - 1
+                    zone o = array.get(zones, j)
+                    bool complementary = (z.sourceTF == '240' and o.sourceTF == '1D') or (z.sourceTF == '1D' and o.sourceTF == '240')
+                    if complementary and o.bias == z.bias and math.abs(o.level - z.level) / z.level <= confluencePctInput / 100.0
+                        z.grade := 3
+                        break
+                if not na(z.visualBox)
+                    box.set_text(z.visualBox, z.sourceTF + (z.grade == 3 ? ' S3*' : ' S2*'))
+    0  // Explicit int return; side effects above must not infer mixed return types.
+
+// Per-zone finite-state confirmation, evaluated once per CLOSED 15m candle.
+// 0: fresh -> 1: first touch -> 2: bullish/bearish reaction -> 3: BOS -> 4: separate retest.
+updateZoneSequences() =>
+    int zs = array.size(zones)
+    if zs > 0
+        for i = 0 to zs - 1
+            zone z = array.get(zones, i)
+            if z.grade >= 2 and not z.used and not z.broken and bar_index > z.createdBar
+                bool bullish = z.bias == BULLISH
+                bool invalid = bullish ? close < z.bottom - atr14 * 0.10 : close > z.top + atr14 * 0.10
+                if invalid
+                    z.broken := true
+                else
+                    if z.stage >= 1 and bar_index - z.touchBar > maxSequenceBars
+                        z.stage := 0
+                        z.touchBar := na
+                        z.reactionBar := na
+                        z.bosBar := na
+                        z.bosLevel := na
+                        z.retestBar := na
+                    // A validated retest lasts only for its own closed 15m candle.
+                    if z.stage == 4 and bar_index > z.retestBar
+                        z.stage := 0
+                        z.retestBar := na
+                    if z.stage == 0 and z.testCount < maxTestsInput
+                        bool touch = low <= z.top and high >= z.bottom and (bullish ? close > z.bottom : close < z.top)
+                        if touch
+                            z.testCount += 1
+                            z.stage := 1
+                            z.touchBar := bar_index
+                            // Reference was entirely known before the touching candle.
+                            z.bosLevel := bullish ? math.max(nz(preTouchHigh, z.top), z.top + atr14 * 0.10) : math.min(nz(preTouchLow, z.bottom), z.bottom - atr14 * 0.10)
+                    else if z.stage == 1 and bar_index > z.touchBar
+                        bool reaction = bullish ? close > z.top + atr14 * reactionAtrInput : close < z.bottom - atr14 * reactionAtrInput
+                        if reaction
+                            z.stage := 2
+                            z.reactionBar := bar_index
+                    else if z.stage == 2 and bar_index > z.reactionBar
+                        bool bos = not na(z.bosLevel) and (bullish ? close > z.bosLevel : close < z.bosLevel)
+                        if bos
+                            z.stage := 3
+                            z.bosBar := bar_index
+                    else if z.stage == 3 and bar_index > z.bosBar
+                        bool retest = not na(z.bosLevel) and (bullish ? low <= z.bosLevel + atr14 * retestAtrInput and close > z.bosLevel : high >= z.bosLevel - atr14 * retestAtrInput and close < z.bosLevel)
+                        if retest
+                            z.stage := 4
+                            z.retestBar := bar_index
+    0  // Explicit int return; side effects above must not infer mixed return types.
+
+updatePositions() =>
+    int ps = array.size(positions)
+    if ps > 0
+        for i = 0 to ps - 1
+            openPosition pos = array.get(positions, i)
+            if not pos.closed and bar_index > pos.openBar
+                bool hitSL = pos.bias == BULLISH ? low <= pos.sl : high >= pos.sl
+                bool hitTP = pos.bias == BULLISH ? high >= pos.tp : low <= pos.tp
+                // Conservative: if both are hit on the same bar, assume SL first.
+                if hitSL or hitTP
+                    pos.closed := true
+                    if not na(pos.slLine)
+                        line.delete(pos.slLine)
+                    if not na(pos.tpLine)
+                        line.delete(pos.tpLine)
+                else
+                    if not na(pos.slLine)
+                        line.set_x2(pos.slLine, bar_index + 1)
+                    if not na(pos.tpLine)
+                        line.set_x2(pos.tpLine, bar_index + 1)
+    if array.size(positions) > 200
+        array.shift(positions)
+    0  // Explicit int return; side effects above must not infer mixed return types.
+
+countOpenPositions() =>
+    int count = 0
+    int ps = array.size(positions)
+    if ps > 0
+        for i = 0 to ps - 1
+            openPosition pos = array.get(positions, i)
+            if not pos.closed
+                count += 1
+    count
+
+//---------------------------------------------------------------------------------------------------------------------}
+// MAIN LOGIC
+//---------------------------------------------------------------------------------------------------------------------{
+// The visual indicator can be inspected on other TFs, but may emit signals ONLY on 15m.
+if barstate.isconfirmed
+    updatePositions()
+    cleanDeadZones()
+
+[ph, pl] = getSwings()
+
+if barstate.isconfirmed
+    if not na(ph)
+        lastSwingHigh := swingPoint.new(ph, high[3], low[3], time[3], bar_index[3], BEARISH)
+        if showSwingInput
+            drawLuxLabel(time[3], ph, 'SH', swingBearColor, label.style_label_down)
+        addZone(ph, high[3], low[3], BEARISH, time[3], '15')
+
+    if not na(pl)
+        lastSwingLow := swingPoint.new(pl, high[3], low[3], time[3], bar_index[3], BULLISH)
+        if showSwingInput
+            drawLuxLabel(time[3], pl, 'SL', swingBullColor, label.style_label_up)
+        addZone(pl, high[3], low[3], BULLISH, time[3], '15')
+
+    if high[1] > high[2] and high[1] > high
+        lastInternalHigh := swingPoint.new(high[1], high[1], low[1], time[1], bar_index[1], BEARISH)
+    if low[1] < low[2] and low[1] < low
+        lastInternalLow := swingPoint.new(low[1], high[1], low[1], time[1], bar_index[1], BULLISH)
+
+    if useMTFInput
+        if not na(low4H)
+            addZone(low4H, low4H * 1.003, low4H * 0.997, BULLISH, pivotTime4H, '240')
+        if not na(high4H)
+            addZone(high4H, high4H * 1.003, high4H * 0.997, BEARISH, pivotTime4H, '240')
+        if not na(low1D)
+            addZone(low1D, low1D * 1.005, low1D * 0.995, BULLISH, pivotTime1D, '1D')
+        if not na(high1D)
+            addZone(high1D, high1D * 1.005, high1D * 0.995, BEARISH, pivotTime1D, '1D')
+
+    updateZoneGrades()
+    if chartIs15m
+        updateZoneSequences()
+
+// --- SIGNAL: do not label as A/A+; this is a candidate requiring independent V2.2 verification.
+int openCount = countOpenPositions()
+if barstate.isconfirmed and chartIs15m and trendAligned and trendBias != 0 and openCount < maxPositionsInput
+    int zSize = array.size(zones)
+    if zSize > 0
+        for i = 0 to zSize - 1
+            zone z = array.get(zones, i)
+            if z.used or z.broken or z.grade < 2 or z.stage != 4 or z.retestBar != bar_index or z.bias != trendBias
+                continue
+            float entry = close
+            float tp = findNearestTP(z.bias, entry)
+            if na(tp)
+                continue
+            float invalidationEdge = z.bias == BULLISH ? z.bottom : z.top
+            [sl, qty, rrNet, riskValid] = calcSignal(entry, invalidationEdge, tp, z.bias)
+            if riskValid and not na(rrNet) and rrNet >= minRRInput and qty > 0
+                // One trade per chart bar, no blind limit orders; execute only on CLOSED 15m bar.
+                z.used := true
+                z.stage := 5
+                // Lock nearby overlapping zones to avoid duplicate candidate entries.
+                for j = 0 to zSize - 1
+                    zone sibling = array.get(zones, j)
+                    if sibling.bias == z.bias and sibling.grade >= 2 and math.abs(sibling.level - z.level) / z.level <= confluencePctInput / 100.0
+                        sibling.used := true
+                        sibling.stage := 5
+
+                line stopLine = na
+                line takeLine = na
+                if showSLTPInput
+                    stopLine := line.new(bar_index, sl, bar_index + 1, sl, color = slColorInput, style = line.style_dashed)
+                    takeLine := line.new(bar_index, tp, bar_index + 1, tp, color = tpColorInput)
+                array.push(positions, openPosition.new(entry, sl, tp, z.bias, bar_index, false, stopLine, takeLine))
+                array.push(signalHistory, tradeSignal.new(entry, sl, tp, qty, rrNet, z.bias, time_close))
+                if array.size(signalHistory) > 200
+                    array.shift(signalHistory)
+
+                string sym = syminfo.basecurrency + syminfo.currency
+                newSignalId := sym + '_' + timeframe.period + '_' + str.tostring(time_close) + '_' + z.uid
+                newSignalThisBar := true
+                newSignalBias := z.bias
+                newSignalEntry := entry
+                newSignalSL := sl
+                newSignalTP := tp
+                newSignalQty := qty
+                newSignalRR := rrNet
+                newSignalZoneBar := z.createdBar
+                newSignalZoneId := z.uid
+                newSignalGrade := z.grade
+
+                color sigColor = z.bias == BULLISH ? signalBullColor : signalBearColor
+                string sigText = z.bias == BULLISH ? '▲ LONG CANDIDATE' : '▼ SHORT CANDIDATE'
+                string lblStyle = z.bias == BULLISH ? label.style_label_up : label.style_label_down
+                float lblPrice = z.bias == BULLISH ? entry - atr14 * 0.5 : entry + atr14 * 0.5
+                drawSignalLabel(bar_index, lblPrice, sigText, sigColor, lblStyle)
+                line.new(bar_index, low, bar_index, high, color = sigColor, width = 2)
+                if showCalcInput
+                    string calcText = 'E: ' + str.tostring(entry, format.mintick) + ' | SL: ' + str.tostring(sl, format.mintick) + ' | TP: ' + str.tostring(tp, format.mintick) + ' | Qty est.: ' + str.tostring(qty, '#.########') + ' | Net RR: ' + str.tostring(rrNet, '#.##') + ' | S' + str.tostring(z.grade) + '*'
+                    label.new(bar_index, math.max(entry, tp), calcText, color = color(na), textcolor = calcColorInput, style = label.style_label_left, size = size.small)
+                break
+
+// BOS / CHoCH (always tracked, visualization optional)
+if barstate.isconfirmed and close > lastInternalHigh.price and lastInternalHigh.price > 0 and trendBias == BULLISH and bar_index - lastBosBar > 3
+    if showInternalsInput
+        drawStructureLine(lastInternalHigh.time, lastInternalHigh.price,
+                          time, lastInternalHigh.price, internalBullColor, '----')
+        drawLuxLabel(time, lastInternalHigh.price, 'BOS', internalBullColor, label.style_label_down)
+    lastBosBar := bar_index
+    lastBullStructureBar := bar_index
+
+if barstate.isconfirmed and close < lastInternalLow.price and lastInternalLow.price > 0 and trendBias == BEARISH and bar_index - lastBosBar > 3
+    if showInternalsInput
+        drawStructureLine(lastInternalLow.time, lastInternalLow.price,
+                          time, lastInternalLow.price, internalBearColor, '----')
+        drawLuxLabel(time, lastInternalLow.price, 'BOS', internalBearColor, label.style_label_up)
+    lastBosBar := bar_index
+    lastBearStructureBar := bar_index
+
+if barstate.isconfirmed and close > lastSwingHigh.price and lastSwingHigh.price > 0 and bar_index - lastChoChBar > 3
+    if showSwingInput
+        drawStructureLine(lastSwingHigh.time, lastSwingHigh.price,
+                          time, lastSwingHigh.price, swingBullColor, '⎯⎯⎯')
+        string txt = trendBias == BEARISH ? 'CHoCH' : 'BOS'
+        drawLuxLabel(time, lastSwingHigh.price, txt, swingBullColor, label.style_label_down)
+    lastChoChBar := bar_index
+    if trendBias == BULLISH
+        lastBullStructureBar := bar_index
+
+if barstate.isconfirmed and close < lastSwingLow.price and lastSwingLow.price > 0 and bar_index - lastChoChBar > 3
+    if showSwingInput
+        drawStructureLine(lastSwingLow.time, lastSwingLow.price,
+                          time, lastSwingLow.price, swingBearColor, '⎯⎯⎯')
+        string txt = trendBias == BULLISH ? 'CHoCH' : 'BOS'
+        drawLuxLabel(time, lastSwingLow.price, txt, swingBearColor, label.style_label_up)
+    lastChoChBar := bar_index
+    if trendBias == BEARISH
+        lastBearStructureBar := bar_index
+
+// FVG
+if showFVGInput and barstate.isconfirmed
+    float bullGapSize = (low - high[2]) / high[2] * 100
+    float bearGapSize = (low[2] - high) / low[2] * 100
+
+    bool isBullFVG = low > high[2] and bullGapSize > fvgFilterInput
+    bool isBearFVG = high < low[2] and bearGapSize > fvgFilterInput
+
+    if isBullFVG
+        box b = box.new(left = bar_index - 2, top = low, right = bar_index + 20,
+                        bottom = high[2],
+                        border_color = fvgBullColor, border_width = 1,
+                        bgcolor = color.new(fvgBullColor, 88),
+                        text = str.tostring(bullGapSize, '#.##') + '%',
+                        text_size = size.tiny, text_color = chart.fg_color)
+        array.push(fvgBullBoxes, b)
+
+    if isBearFVG
+        box b = box.new(left = bar_index - 2, top = low[2], right = bar_index + 20,
+                        bottom = high,
+                        border_color = fvgBearColor, border_width = 1,
+                        bgcolor = color.new(fvgBearColor, 88),
+                        text = str.tostring(bearGapSize, '#.##') + '%',
+                        text_size = size.tiny, text_color = chart.fg_color)
+        array.push(fvgBearBoxes, b)
+
+if barstate.islast
+    for b in fvgBullBoxes
+        box.set_right(b, bar_index + 20)
+    for b in fvgBearBoxes
+        box.set_right(b, bar_index + 20)
+
+int fbSize = array.size(fvgBullBoxes)
+if fbSize > 0
+    int i = 0
+    while i < fbSize
+        b = array.get(fvgBullBoxes, i)
+        if bar_index > int(box.get_left(b)) + 2
+            if low <= box.get_top(b) and high >= box.get_bottom(b)
+                box.delete(b)
+                array.remove(fvgBullBoxes, i)
+                fbSize -= 1
+                continue
+        i += 1
+
+int fbsSize = array.size(fvgBearBoxes)
+if fbsSize > 0
+    int i = 0
+    while i < fbsSize
+        b = array.get(fvgBearBoxes, i)
+        if bar_index > int(box.get_left(b)) + 2
+            if high >= box.get_bottom(b) and low <= box.get_top(b)
+                box.delete(b)
+                array.remove(fvgBearBoxes, i)
+                fbsSize -= 1
+                continue
+        i += 1
+
+while array.size(fvgBullBoxes) > fvgMaxCountInput
+    b = array.get(fvgBullBoxes, 0)
+    box.delete(b)
+    array.remove(fvgBullBoxes, 0)
+while array.size(fvgBearBoxes) > fvgMaxCountInput
+    b = array.get(fvgBearBoxes, 0)
+    box.delete(b)
+    array.remove(fvgBearBoxes, 0)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// INFO PANEL
+//---------------------------------------------------------------------------------------------------------------------{
+var table infoPanel = table.new(position.top_right, 2, 8,
+     bgcolor = color.new(color.black, 80), frame_color = GRAY, frame_width = 1)
+
+if barstate.islast
+    infoPanel.cell(0, 0, 'Trend:',    text_color = color.white, text_size = size.small)
+    infoPanel.cell(1, 0, trendBias == BULLISH ? 'BULLISH' : trendBias == BEARISH ? 'BEARISH' : 'NEUTRAL',
+                   text_color = trendBias == BULLISH ? GREEN : trendBias == BEARISH ? RED : GRAY, text_size = size.small)
+    infoPanel.cell(0, 1, '1W:',       text_color = color.white, text_size = size.small)
+    infoPanel.cell(1, 1, trend1W == BULLISH ? 'BULL' : trend1W == BEARISH ? 'BEAR' : '—',
+                   text_color = trend1W == BULLISH ? GREEN : trend1W == BEARISH ? RED : GRAY, text_size = size.small)
+    infoPanel.cell(0, 2, '1D:',       text_color = color.white, text_size = size.small)
+    infoPanel.cell(1, 2, trend1D == BULLISH ? 'BULL' : trend1D == BEARISH ? 'BEAR' : '—',
+                   text_color = trend1D == BULLISH ? GREEN : trend1D == BEARISH ? RED : GRAY, text_size = size.small)
+    infoPanel.cell(0, 3, '4H:',       text_color = color.white, text_size = size.small)
+    infoPanel.cell(1, 3, trend4H == BULLISH ? 'BULL' : trend4H == BEARISH ? 'BEAR' : '—',
+                   text_color = trend4H == BULLISH ? GREEN : trend4H == BEARISH ? RED : GRAY, text_size = size.small)
+    infoPanel.cell(0, 4, 'Balance:',  text_color = color.white, text_size = size.small)
+    infoPanel.cell(1, 4, '$' + str.tostring(balanceInput, '#.'), text_color = color.white, text_size = size.small)
+    infoPanel.cell(0, 5, 'Sim Slots:',text_color = color.white, text_size = size.small)
+    infoPanel.cell(1, 5, str.tostring(countOpenPositions()) + '/' + str.tostring(maxPositionsInput),
+                   text_color = openCount >= maxPositionsInput ? RED : GREEN, text_size = size.small)
+    infoPanel.cell(0, 6, 'Zones:',    text_color = color.white, text_size = size.small)
+    infoPanel.cell(1, 6, str.tostring(array.size(zones)), text_color = color.white, text_size = size.small)
+    infoPanel.cell(0, 7, 'Alert TF:', text_color = color.white, text_size = size.small)
+    infoPanel.cell(1, 7, chartIs15m ? '15M READY' : '15M ONLY', text_color = chartIs15m ? GREEN : ORANGE, text_size = size.small)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// WEBHOOK ALERTS (JSON with full trade data)
+//---------------------------------------------------------------------------------------------------------------------{
+// Dynamic JSON: TradingView alert type "Any alert() function call". Re-create old alerts.
+// qty is deliberately an *estimate*; exchange validation must occur downstream.
+if newSignalThisBar and barstate.isconfirmed and chartIs15m
+    string json = '{"id":"' + newSignalId + '"'
+    json += ',"version":"v3.6.2-v2.2-radar"'
+    json += ',"status":"CANDIDATE"'
+    json += ',"symbol":"' + syminfo.basecurrency + syminfo.currency + '"'
+    json += ',"tv_symbol":"' + syminfo.tickerid + '"'
+    json += ',"timeframe":"' + timeframe.period + '"'
+    json += ',"action":"' + (newSignalBias == BULLISH ? 'buy' : 'sell') + '"'
+    json += ',"entry":' + str.tostring(newSignalEntry, format.mintick)
+    json += ',"sl":' + str.tostring(newSignalSL, format.mintick)
+    json += ',"tp":' + str.tostring(newSignalTP, format.mintick)
+    json += ',"qty":' + str.tostring(newSignalQty, '#.########')
+    json += ',"qty_is_estimate":true'
+    json += ',"rr_net":' + str.tostring(newSignalRR, '#.####')
+    json += ',"risk_usd":' + str.tostring(balanceInput * riskPctInput / 100.0, '#.####')
+    json += ',"zone_id":"' + newSignalZoneId + '"'
+    json += ',"zone_grade_proxy":' + str.tostring(newSignalGrade)
+    json += ',"zone_bar":' + str.tostring(newSignalZoneBar)
+    json += ',"time":' + str.tostring(time)
+    json += ',"time_close":' + str.tostring(time_close)
+    json += ',"bar_confirmed":true'
+    json += ',"requires_v22_validation":true}'
+    alert(json, alert.freq_once_per_bar_close)
+
+alertcondition(newSignalThisBar and newSignalBias == BULLISH and chartIs15m, 'Bullish Candidate', 'Bullish V2.2 candidate; use Any alert() function call for JSON')
+alertcondition(newSignalThisBar and newSignalBias == BEARISH and chartIs15m, 'Bearish Candidate', 'Bearish V2.2 candidate; use Any alert() function call for JSON')
