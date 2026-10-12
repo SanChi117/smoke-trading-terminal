@@ -99,6 +99,17 @@
 
 ---
 
+## Five-symbol pilot data transport resolution — 2026-10-12 (AppDeploy v29)
+
+- Owner screenshots establish: synthetic PAPER self-check **9/9 PASS**, direct browser Binance USD-M **OK**, five manual V5 assessments **5/5 OK, all WATCH**, but AppDeploy backend gets **HTTP 451 RESTRICTED** for the same Futures candle endpoint. Consequently the server generated five ERROR rows and zero valid V5 assessments.
+- This is a confirmed **server data access restriction**, not evidence V5 is broken or no real trade structures exist.
+- **v28** implemented additive browser-local PAPER forward mechanics using unchanged V5 and shared pure PAPER reducer: direct client-side Futures OHLC, post-signal quote, subsequent closed 1m candles, local-only versioned state recovery across reload, repeat-bar guard, traceable warnings and hypothetical commissions. No real orders. No data relay to AppDeploy, no crossing the restricted server market endpoint.
+- **v29**, snapshot `1791836529176`, app READY and QA no frontend/backend errors. Cron configuration intentionally set to `[]` to pause failing 15m autonomous scanner and stop pointless HTTP451 retries and stale errors; historical research/PAPER records preserved. Server config and UI now explicitly mark browser-only manual research. This is **NOT** unattended 24/7 scanning.
+- **Pending live acceptance:** user click `Обработать очередной закрытый бар (5 монет)` in [`#pilot`](https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#pilot), inspect five market outcomes and verify local resume, no fake entries, and later real V5 READY paper transition. Historical simulated 9/9 cases verify maths only, not live entry. Do not conflate local browser journal with server PAPER.
+- [Incident and v29 runbook](docs/INCIDENT_PILOT_BINANCE_FEED_2026-10-12.md). Keep scale/frequency unchanged until the mechanics are reliable and an authorized server data source is available. No VPS yet at user request.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
