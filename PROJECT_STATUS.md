@@ -1,5 +1,18 @@
 # SMOKE Trading OS — Project Status
 
+## Active checkpoint — 2026-10-12 (Phase 0: source protection and migration audit)
+
+- **State: PARTIAL, work started.** Verified pre-change `main` SHA `305762d713bc36975b8c465546e4c826f281cfc5`; protected rollback branch `backup/pre-phase0-20261012`.
+- Full user `MASTER ТЗ v1.0` and latest working Pine V2.2 radar v3.6.2 saved as unchanged source files: [MASTER ТЗ](docs/SMOKE_Trading_OS_Master_TZ_v1.0.md), [Pine radar](research/tradingview/Strategy_V2_2_Radar_LuxAlgo_v362.pine). Read-back matched originals.
+- Current audit: [Phase 0 audit](docs/PHASE0_AUDIT_2026-10-12.md); architectural decision: [ADR-0001](docs/ADR-0001-source-runtime-strategies.md).
+- **Critical finding:** Applied AppDeploy snapshot `1791388190004` previously exposed `backend/index.ts` and observation/orchestrator modules absent from the same paths in GitHub `main`. Do NOT deploy GitHub over the running AppDeploy site yet.
+- **Outstanding blocker:** During the latest audit the AppDeploy connector returned internal errors; full, independent AppDeploy source backup/export and integrity verification remain **INCOMPLETE**. Preserve the currently published deployment unchanged until export succeeds.
+- No automated trading enabled; no strategy behavior, exchange account, deployment, or keys changed. Earlier test passes are historical and are not re-labeled as current CI passes.
+- Next work: restore AppDeploy read access → export and check source + secret scan → compare against GitHub → validate CI/UI → migrate with rollback. Agent owns implementation; owner action is not required at present.
+
+---
+
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
