@@ -28,3 +28,26 @@ Source: owner screenshot from live `#pilot` (not synthetic test)
 ## Open items
 - Neither successful direct API access from AppDeploy nor successful browser capture is currently verified. The owner needs to run the just-deployed diagnostics or provide their nonsecret statuses.
 - Cron success even when 5/5 records contain errors is a separate false-positive **health metric**; UI now flags this and follow-up should distinguish scheduling `success` from data pipeline `healthy`. PAPER remains non-executable if V5 fails.
+
+## 2026-10-12 owner screenshot follow-up and v29 recovery mode
+
+Owner provided two follow-up screenshots of live SMOKE Pilot. This definitively resolves the **transport fault location** for those tests:
+- **9/9** isolated deterministic PAPER scenarios passed in the browser.
+- Authenticated server `/api/pilot/market-health` reports **RESTRICTED / HTTP 451** for the real Binance USD-M Futures endpoint. This is an access restriction response, **not** a V5 logic failure.
+- The owner's browser successfully receives `BINANCE_USDS_M` candles and completed **five V5 manual evaluations, zero data errors**, all shown as `WATCH`.
+- Server cron still produced 5 errors and zero valid market assessments, because server egress is restricted. Empty V5 READY in server journal must **not** be interpreted as a market finding.
+- The website and PAPER implementation were functional; the **autonomous server scan was not**.
+
+### Deploy v28 and v29
+- AppDeploy **v28** added `app/components/PilotBrowserPaper.tsx`. It obtains **direct** authenticated-public Binance USD-M candles from the end-user browser (no server proxy or alternate instrument), validates OHLC chronology, executes unchanged V5 on the last closed 15m bar, and feeds an actual, bounded after-signal book quote or subsequent closed 1m candles to the same pure PAPER transition reducer used by existing unit tests. Only the owner pressing `Обработать очередной закрытый бар (5 монет)` initiates a cycle.
+- Storage: browser localStorage `SMOKE_BROWSER_PAPER_LAB_V1`; one isolated, versioned PAPER model state per symbol, last 60 diagnostics, and at most 80 closed model trades per instrument. Refresh/reopen in the **same browser profile** preserves these user-local records, but no server persistence, account authentication or cloud backup is claimed. Malformed storage blocks further simulated entries instead of quietly resetting.
+- The browser PAPER lab does **not** submit market data to AppDeploy for bypass of 451, does **not** write to the existing server PAPER ledger, does **not** place real exchange orders, and is **not an unattended scanner**. Local state and hypothetical net PnL are experimental. First partial minute and real execution assumptions remain caveated.
+- AppDeploy **v29**, snapshot `1791836529176`, removed the sole `cron.json` job and paused broken automatic 15m Binance scans to avoid recurring 451 traffic, false-positive cron `success` and endless error-journal additions. Historical server records were left intact, and original V5/PAPER source unchanged. `GET /api/pilot/config` and UI explicitly say server cron paused, browser manual only. AppDeploy READY, `crons:null`, QA frontend/backend error arrays empty.
+- **Not yet proven:** actual manual browser PAPER opening/settling on a new genuine V5 READY signal, reload/recovery from browser localStorage, completed cross-user data isolation (not applicable to localStorage), or consistent long-running research yield. V5 signal availability depends on closed-bar confirmation; five `WATCH` reports are valid but not a trade.
+
+### Next controlled acceptance
+1. User opens `https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#pilot`, hard-refreshes, scrolls to `Браузерный PAPER · настоящие свечи Binance`, presses manual process button. Confirm 5 V5 outcomes and all local PAPER positions FLAT when no READY; no manufactured trades.
+2. Reopen same browser and verify local saved `lastCycle`; re-run same bar and ensure it is skipped, no duplicate.
+3. After a true V5 READY signal, check that quote age/direction/risk are validated and any browser-PAPER entry is local, not server. On later bar, verify 1m chronology and conservative exits.
+4. Only consider restoring an unattended cron after a permitted, functional exchange data source from AppDeploy is established; never pretend HTTP451 has been resolved via UI updates.
+
