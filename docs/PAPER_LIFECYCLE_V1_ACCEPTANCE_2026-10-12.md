@@ -59,6 +59,15 @@ AppDeploy v23: status READY, QA error lists empty, cron `smoke-pilot-v5-closed15
 - No state backup drill, no high-load/credit proof, no TradingView Pine V2.2 logic port, and no 24/7 VPS dedicated streaming service.
 - Pilot state keeps **80 most recent closed paper trades per symbol** and a cumulative model net PnL. It is not a full append-only audited fill ledger or indefinitely retained history.
 
+## Controlled mechanics test (isolated, 2026-10-12)
+- Pure production state reducer: [`core/paper/paper-pilot-state.ts`](../core/paper/paper-pilot-state.ts).
+- Controlled end-to-end suite: [`tests/paper-pilot-integration.test.mjs`](../tests/paper-pilot-integration.test.mjs). **Nine repeatable scenarios** with synthetic quotes/1m candles and a simulated optimistic-CAS persistence adapter. No simulated test positions were written to actual AppDeploy tables.
+- Explicit paths tested: `FLAT → OPEN → OPEN(checkpoint) → TARGET CLOSED`; simultaneous SL+TP => STOP; missing 1m => HALTED and later recovery; quote/time invalidity => reject; feed error preserves OPEN; duplicate/older cycle skip; restart serialization/deserialization; concurrent CAS collision rejects second writer; malformed/future state rejects.
+- GitHub CI on commit `09b068e5`: [terminal-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38296895714) and [level-flow-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38296895751). Tests are part of mandatory `npm test`.
+- AppDeploy **v24** snapshot `1791832857955` deployed exactly this shared pure reducer in `core/paper/paper-pilot-state.ts`, and the backend `advancePilotPaper` now delegates its actual state transitions to `evaluatePilotPaperCycle`; existing `db.tx.update` conditional revision remains the persistence gateway. Deployment READY, QA shows no frontend/backend errors.
+- **Important scope:** optimistic-CAS mock behavior is exercised, but this is NOT a physical restart/disaster recovery or a verified DB readback of a real AppDeploy open/closed trade. The newest cron success report pre-dated v24 activation. The test source asserts the state machine, not the production network, account, actual timing or profits.
+- The entry-minute partial-candle caveat remains; do not promote approximate virtual PnL to evidence of executable yield without resolving or conservatively bounding this uncertainty.
+
 ## Next acceptance gates (no scale/speed expansion until these pass)
 1. Read back AppDeploy `#pilot` as an authorized user after at least one completed cron, verify each symbol's `OK` or explicit `ERROR` and `lastCycle`, no fabricated READY or trade.
 2. Prove `FLAT → OPEN → OPEN(checkpoint) → CLOSED` transitions on deterministic controlled sequences and after restart, with no duplicates under concurrent retries.
