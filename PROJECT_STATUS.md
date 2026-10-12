@@ -40,6 +40,18 @@
 
 ---
 
+## Pilot phase 1a update — 2026-10-12 (AppDeploy v20, near-event checks)
+
+- [SMOKE Pilot](https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#pilot) deployed **AppDeploy v20** `1791829919597`; status ready, QA no frontend/network/backend errors.
+- Replaced old *hourly retrospective* cron with **every 15 minutes**, UTC minute `03,18,33,48`, about three minutes after **closed 15m bar**. AppDeploy `smoke-pilot-v5-closed15m` is enabled.
+- Changed evaluation to **one actually closed 15m bar** per run, not four historic 15m hypotheses reported as fresh opportunities. Existing V5 strategy source and chart unchanged.
+- Changed persistence to `db.tx.add` with stable `id=logicalId` per symbol/closed candle; any null IDs are reconciled via consistent read to avoid duplicate-counts from retries. No live order execution.
+- **First scheduled cycle and DB readback still not confirmed** at deploy time. Verify actual 5-symbol outcomes and quota/latency before promoting any research result to a paper execution.
+- 5 symbols × 5 timeframe REST reads × 96 runs/day = up to approximately **2400 Binance candle requests per day** (excluding retries). This is an interim accuracy/latency experiment, not a sustainable large-universe scanner.
+- Next phases: verify scheduler→Binance→persisted assessment; add deterministic post-signal PAPER fill simulation with actual future quote, costs, SL/TP stop-first, position recovery; then faithful Pine V2.2 stateful port. No VPS needed for this stage. No guaranteed realtime WebSocket server on AppDeploy.
+
+---
+
 ## Pilot checkpoint — 2026-10-12 (AppDeploy v19: 5-symbol scheduled V5 research)
 
 - **User requested no VPS and no Premium/100 manual TradingView alerts** while proving the system with a handful of coins. Decision: reduce universe only, preserve original strategy logic. See [pilot acceptance + limitations](docs/SMOKE_PILOT5_APPDEPLOY_2026-10-12.md).
