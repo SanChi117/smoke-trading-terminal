@@ -1,6 +1,8 @@
 /**
  * TradingView Structure V2.2 radar v3.6.2 candidate boundary.
  * PURE NORMALIZER ONLY. No order submit, authorization, or persistence.
+ * AppDeploy ingress authenticates tv_shared_secret then partitions by ownerUserId;
+ * this parser intentionally NEVER returns or preserves the shared secret.
  * Webhook ingress MUST authenticate the sender, rate limit, deduplicate on
  * candidate.id in durable storage, and re-check Binance context before orders.
  */
@@ -60,6 +62,8 @@ export function normalizeTvV22Candidate(payload, options = {}) {
       item.qty_is_estimate !== true) reject('UNTRUSTED_CANDIDATE_FLAGS');
   if (item.timeframe !== '15') reject('WRONG_TIMEFRAME');
 
+  const ownerUserId = text(item.owner_user_id, 64);
+  if (!ownerUserId || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(ownerUserId)) reject('INVALID_OWNER_ID');
   const symbol = text(item.symbol, 24);
   if (!symbol || !/^[A-Z0-9]{3,20}USDT$/.test(symbol)) reject('INVALID_SYMBOL');
   const tvSymbol = text(item.tv_symbol, 64);
@@ -107,6 +111,7 @@ export function normalizeTvV22Candidate(payload, options = {}) {
     version: TV_V22_RADAR_VERSION,
     status: 'CANDIDATE',
     id,
+    ownerUserId,
     symbol,
     tvSymbol,
     timeframe: '15m',
