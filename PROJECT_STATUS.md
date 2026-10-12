@@ -78,6 +78,16 @@
 
 ---
 
+## Controlled mechanics scenarios — 2026-10-12 (PAPER v24)
+
+- **Nine isolated end-to-end test scenarios passed** using a synthetic market and an in-memory revisioned database adapter: FLAT→OPEN→checkpoint→TP, SL-first dual hit, missing 1m recovery, transient market error preservation, stale quote/signal rejection, duplicate/out-of-order cron, serialization reboot, concurrent CAS race, corrupt/future state rejection.
+- Same pure production transition now implemented in [`core/paper/paper-pilot-state.ts`](core/paper/paper-pilot-state.ts) and mirrored in AppDeploy **v24**, snapshot `1791832857955`. Existing `backend/pilot-paper.ts` delegates to it; no real trade/order integration.
+- CI commit `09b068e5`: [terminal-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38296895714), [level-flow-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38296895751). AppDeploy v24 deployment READY with no reported QA frontend/network/backend errors.
+- **Open validation gap:** no authenticated inspection of the five real AppDeploy paper-state records, nor a proven actual OPEN/CLOSED broker-like timeline or physical DB backup/restore. Fake market fixtures remain outside the production journal. First entry-minute partial candle is not observed; simulated PnL is not certified.
+- Full methodology and limitations: [PAPER_LIFECYCLE_V1_ACCEPTANCE_2026-10-12.md](docs/PAPER_LIFECYCLE_V1_ACCEPTANCE_2026-10-12.md). Continue testing correctness; do not expand 5-symbol universe or 15m cadence.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
