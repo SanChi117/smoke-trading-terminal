@@ -110,6 +110,16 @@
 
 ---
 
+## Owner screenshot acceptance — 2026-10-12, browser PAPER v29
+
+- Owner provided three real `#pilot` screenshots: **PAPER 9/9 PASS**, five valid Binance USD-M Futures V5 browser assessments **all WATCH**, five browser-local PAPER records **FLAT/NO_V5_READY**, no data errors and zero hypothetical PnL. This is correct no-entry behavior, **not** an OPEN→CLOSED validation.
+- Archived AppDeploy backend results still show **five HTTP451** data access restrictions. Stopped server cron remains off; the local manual browser-only mode remains the operational trial.
+- We investigated and staged UI improvements: promote actual browser V5/PAPER above the old error archive, add browser storage-readback button and visible per-symbol revision checks. **Not deployed:** AppDeploy returned `CREDITS_USAGE_LIMIT_REACHED`; Free tier daily remaining below minimum 16-credit deployment cost, next reset `2026-10-13T00:00:00Z`. Do not retry before reset. Existing v29 retained.
+- Exact non-destructive acceptance: same closed-bar second click `SKIP` without new trades; refresh same browser/profile and verify saved last bar, position and net PnL; next new bar should update one cycle. No signal means no virtual trade, never force a `READY`.
+- [Screenshots-grounded acceptance protocol](docs/BROWSER_PAPER_V29_ACCEPTANCE_2026-10-12.md). Do not claim full trading-engine readiness or continuous autonomy. No user purchase/VPS requirement for this proof-of-mechanics step.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
