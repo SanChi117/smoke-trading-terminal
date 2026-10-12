@@ -88,6 +88,17 @@
 
 ---
 
+## Incident — 2026-10-12: all five Binance Futures market feeds fail
+
+- The owner provided a live screenshot showing `PILOT_BINANCE_UNAVAILABLE` on BTC/ETH/SOL/LINK/SUI, zero analyzed closed bars and zero V5 READY. This is a **real data pipeline outage**; cron `success` only meant the handler completed (it persisted five ERROR records).
+- Source: `backend/pilot-v5.ts` had collapsed *all HTTP non-2xx* into `PILOT_BINANCE_UNAVAILABLE`; the error did not preserve the actual HTTP status. Root cause (network vs restriction vs quota) **not yet proven**.
+- AppDeploy **v25–v26** now classifies server HTTP access, rate limits, transport/network; owner-authenticated `GET /api/pilot/market-health` probes a tiny real futures candle sample. Pilot UI adds `Проверить подключение` (server vs browser), a visible all-symbol failure banner, and `Проверить 5 монет прямо сейчас` to run existing V5 **ephemerally in the browser**. Browser results are not used for server PAPER ledger or AUTO execution.
+- AppDeploy **v26**, `1791834385401`, READY, QA front/network/backend error lists empty. This verifies deployment, **not** Binance connectivity. Existing strategies, 15m cadence, 5-coin pool, and PAPER-only safety unchanged.
+- Owner follow-up: read two `Проверить подключение` results and, if browser Binance USD-M is available, trigger the browser V5 sample. Only then choose a compatible authorized server data source / topology. No silent Spot fallback or bypass of explicit geo restrictions.
+- Details: [INCIDENT_PILOT_BINANCE_FEED_2026-10-12.md](docs/INCIDENT_PILOT_BINANCE_FEED_2026-10-12.md).
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
