@@ -161,6 +161,16 @@
 
 ---
 
+## Data parity accepted and PAPER receipts — AppDeploy v34 (2026-10-13)
+
+- Owner confirmed `Все пасс` after v32 Binance USD-M 1m↔15m consistency test, recorded as **browser-tested 4/4 PASS**, not blanket validation of all five symbols. Prior user-confirmed same-bar skip and local-save protections remain.
+- Mechanics-first phase: new pure [`core/paper/paper-receipt.ts`](core/paper/paper-receipt.ts) with eight tests [`tests/paper-receipt.test.mjs`](tests/paper-receipt.test.mjs). Test fixtures initially failed two scenarios due to wrong minute boundary; corrected to real intraminute quote timestamp before production rollout. Commit `0c303417` passed [terminal-ci](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38397249426) and [level-flow-ci](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38397249504).
+- AppDeploy **v34**, snapshot `1791894523978` READY, no reported frontend/backend/network QA errors. The same shared tested receipt code now records **genuine only** V5 PAPER OPEN/CLOSE/HALT/CHECKPOINT/REJECT in the user's existing browser localStorage snapshot. Captures signal close, bid/ask, virtual Entry/SL/TP, modeled R/PnL if closed, minute evidence count/time span, warning and state revision; WATCH produces no synthetic trade receipts. Last 300 only, duplicate ID check, same localStorage transaction as state, no old state reset. The existing JSON backup now includes receipts.
+- These receipts are **not cryptographically immutable, not actual fills or broker attestations, and not backed up in cloud**. First real market-generated V5 READY→PAPER OPEN→CLOSED/HALT still awaits observation; server polling remains paused due to HTTP451. No V5 rules, 5-coin universe, speed, VPS or live-execution permission changed.
+- [Detailed v34 receipt acceptance](docs/V34_PAPER_RECEIPT_ACCEPTANCE_2026-10-13.md). Next user verification: reload `#pilot`, confirm saved state intact and zero receipts for WATCH; observe real READY event when it organically occurs, without fake injection.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
