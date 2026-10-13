@@ -1,5 +1,20 @@
 # SMOKE Trading OS — Project Status
 
+## Latest checkpoint — 2026-10-14 (stability before new entry logic)
+
+**Phase:** Existing terminal reliability and PAPER evidence. **Overall: PARTIAL / NOT RELEASE READY.** No new entry mechanic has been connected. LIVE exchange order execution stays disabled.
+
+- **Published AppDeploy**: v41, snapshot `1791927320801` (current available production checkpoint at last verified status). Deployment status `ready`, current QA error arrays empty. Browser PILOT remains manual; server-side 15m cron/PAPER scanner is paused because Binance Futures egress returned HTTP 451. A successful deployment is not proof of genuine READY→OPEN→CLOSE.
+- **Confirmed deployed fixes**: existing PAPER OPEN minute reconciliation independent of new 15m candle; paginated and bounded closed 1m recovery; correct cursor after first entry-minute audit (no perpetual entry-minute refetch); localStorage stale-tab conflict detection; local and opt-in AppDeploy account backup/restore flows. Their manual authenticated E2E remains unverified.
+- **GitHub pure-core**, on draft PR #88: deterministic tests for minute idempotency, no fabricated SL/TP, recovery HALT, 7-day cursor and entry-audit semantics, JSON/PAPER-only restore, local storage guard, mathematical consistency of trade gross/net PnL and risk, and bounded total realized PnL. The PnL integrity changes are **not published to AppDeploy v41** because platform deployment credits were exhausted.
+- **Branch**: `fix/paper-minute-monitor-and-strategy-slot-20261013` (draft PR #88). Both `terminal-ci` and `level-flow-ci` passed on recent functional SHA `c0d4a8845e109ff2f877baf3786a3deb248d3e58`. Later release-docs CI and exact newest head must be checked separately before merge.
+- **Import to Railway is DEFERRED** until the new entry mechanic is separately integrated and tested. Existing GitHub Next/Vinext and AppDeploy Vite sources are materially different; no one-click equivalence or portable 24/7 service is proven. Legacy Python `deployment/install_smoke_paper_server.sh` starts an old HYBRID v2 baseline and must not be presented as the current SMOKE terminal installer.
+- **Immediate release gate:** [SMOKE_RELEASE_GATE_BEFORE_RAILWAY.md](docs/SMOKE_RELEASE_GATE_BEFORE_RAILWAY.md). It distinguishes CODED / CI PASS / DEPLOYED / E2E PASS / UNVERIFIED. Never fabricate a real ready signal to force an E2E journal event.
+- **Owner action now:** none needed for GitHub code work; a logged-in browser drill and a new host allowing Binance data will eventually be necessary for real cloud-backed E2E and autonomous PAPER evidence.
+
+---
+
+
 ## Active checkpoint — 2026-10-12 (Phase 0: source protection and migration audit)
 
 - **State: PARTIAL, work started.** Verified pre-change `main` SHA `305762d713bc36975b8c465546e4c826f281cfc5`; protected rollback branch `backup/pre-phase0-20261012`.
