@@ -303,3 +303,58 @@ test('paper module registry keeps V5 active; new strategies remain inactive unti
   assert.throws(() => analyzeActivePaperStrategy('BTCUSDT', {}, BASE),
     /PAPER_ACTIVE_STRATEGY_OR_DATA_UNAVAILABLE/);
 });
+
+
+test('PAPER backup parser accepts a real legacy local export without receipts', async () => {
+  const { parseLocalPaperBackup } = await import('../core/paper/paper-backup.ts');
+  const names = ['BTCUSDT','ETHUSDT','SOLUSDT','LINKUSDT','SUIUSDT'];
+  const records = Object.fromEntries(names.map(s => [s,blankPilotPaperState(s)]));
+  records.BTCUSDT = evaluatePilotPaperCycle(records.BTCUSDT,
+    cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  const exportedAt = SIGNAL_TIME + ONE_MIN;
+  const old = {
+    format:'SMOKE_BROWSER_PAPER_BACKUP_V1', exportedAt,
+    paper:{version:1,records,notes:[]},
+  };
+  const parsed = parseLocalPaperBackup(old,names,exportedAt);
+  assert.equal(parsed.paper.records.BTCUSDT.open.symbol,'BTCUSDT');
+  assert.equal(parsed.paper.records.BTCUSDT.executionAuthorized,false);
+  assert.deepEqual(parsed.paper.receipts,[]);
+  assert.equal(parsed.exportedAt,exportedAt);
+});
+
+test('PAPER backup parser rejects injected execution authority or missing symbols', async () => {
+  const { parseLocalPaperBackup } = await import('../core/paper/paper-backup.ts');
+  const names = ['BTCUSDT','ETHUSDT'];
+  const now = SIGNAL_TIME + ONE_MIN;
+  const valid = {
+    format:'SMOKE_BROWSER_PAPER_BACKUP_V1',exportedAt:now,
+    paper:{version:1,records:Object.fromEntries(names.map(x=>[x,blankPilotPaperState(x)])),
+      notes:[],receipts:[]},
+  };
+  const check = input=>parseLocalPaperBackup(input,names,now);
+  assert.equal(check(valid).paper.version,1);
+  assert.throws(()=>check({...valid,exportedAt:now+60_000}),/PAPER_BACKUP_INVALID_ENVELOPE/);
+  assert.throws(()=>check({...valid,paper:{...valid.paper,records:{BTCUSDT:valid.paper.records.BTCUSDT}}}),/PAPER_BACKUP_INVALID_SYMBOL_SET/);
+  assert.throws(()=>check({...valid,paper:{...valid.paper,
+    records:{...valid.paper.records,BTCUSDT:{...valid.paper.records.BTCUSDT,executionAuthorized:true}}}}),/PAPER_BACKUP_INVALID_STATE/);
+});
+
+test('PAPER backup parser refuses fabricated trades, corrupted open position and forged receipts', async () => {
+  const { parseLocalPaperBackup } = await import('../core/paper/paper-backup.ts');
+  const names=['BTCUSDT'];
+  const now=SIGNAL_TIME+ONE_MIN;
+  const opened=evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(),{quote:marketQuote()},SIGNAL_TIME).state;
+  const base={format:'SMOKE_BROWSER_PAPER_BACKUP_V1',exportedAt:now,paper:{
+    version:1,records:{BTCUSDT:opened},notes:[],receipts:[]}};
+  const check = record=>parseLocalPaperBackup(record,names,now);
+  assert.equal(check(base).paper.records.BTCUSDT.open.id,opened.open.id);
+  assert.throws(()=>check({...base,paper:{...base.paper,records:{
+    BTCUSDT:{...opened,open:{...opened.open,stop:120}}}}}),/PAPER_BACKUP_INVALID_OPEN/);
+  assert.throws(()=>check({...base,paper:{...base.paper,records:{
+    BTCUSDT:{...opened,closed:[{id:'FAKE_WIN',netPnlUsdt:1000}]}}}}),/PAPER_BACKUP_INVALID_TRADE/);
+  assert.throws(()=>check({...base,paper:{...base.paper,receipts:[{
+    id:'FORGED_RECEIPT',executionAuthorized:true,
+  }]}}),/PAPER_BACKUP_INVALID_RECEIPT/);
+});
