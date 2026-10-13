@@ -5,7 +5,7 @@ import { makePaperReceipt, appendPaperReceipt } from '../core/paper/paper-receip
 
 const C = Date.UTC(2026,9,13,12);
 const M = 60_000;
-const quote = {symbol:'BTCUSDT',bid:99.99,ask:100,capturedAt:C+3*M};
+const quote = {symbol:'BTCUSDT',bid:99.99,ask:100,capturedAt:C+3*M+3_000};
 const ready = (close=C) => ({symbol:'BTCUSDT',cycleCloseTime:close,status:'OK',
   assessments:[{state:'ready',side:'long',entry:100,stop:98,target:106,barCloseTime:close}]});
 const watch = (close=C) => ({symbol:'BTCUSDT',cycleCloseTime:close,status:'OK',assessments:[]});
@@ -18,12 +18,12 @@ function minutes(from,to,overrides={}) {
 function begin() {
   const prior=blankPilotPaperState('BTCUSDT'),cycle=ready();
   const evidence={quote};
-  const result=evaluatePilotPaperCycle(prior,cycle,evidence,C+3*M);
+  const result=evaluatePilotPaperCycle(prior,cycle,evidence,C+3*M+3_000);
   return {prior,cycle,evidence,after:result.state};
 }
 test('actual READY + observed quote creates detailed PAPER_OPEN receipt',()=>{
   const x=begin();
-  const receipt=makePaperReceipt(x.prior,x.after,x.cycle,x.evidence,C+3*M);
+  const receipt=makePaperReceipt(x.prior,x.after,x.cycle,x.evidence,C+3*M+3_000);
   assert.equal(receipt.action,'PAPER_OPEN');
   assert.equal(receipt.observedQuote.ask,100);
   assert.equal(receipt.paperEntry,x.after.open.entry);
@@ -43,7 +43,7 @@ test('a genuine READY rejected due to stale quote is preserved as REJECT',()=>{
   const cycle=ready();
   const evidence={quote:{...quote,capturedAt:C+M}};
   const after=evaluatePilotPaperCycle(prior,cycle,evidence,C+3*M).state;
-  const receipt=makePaperReceipt(prior,after,cycle,evidence,C+3*M);
+  const receipt=makePaperReceipt(prior,after,cycle,evidence,C+3*M+3_000);
   assert.equal(receipt.action,'PAPER_REJECT');
   assert.equal(receipt.decision,'STALE_QUOTE');
   assert.equal(receipt.paperExit,null);
@@ -81,13 +81,13 @@ test('missing minute data produces an unresolved HALT receipt without booked pro
   assert.equal(after.open.id,prior.open.id);
 });
 test('duplicate receipts are discarded by stable logical id',()=>{
-  const x=begin(),r=makePaperReceipt(x.prior,x.after,x.cycle,x.evidence,C+3*M);
+  const x=begin(),r=makePaperReceipt(x.prior,x.after,x.cycle,x.evidence,C+3*M+3_000);
   const first=appendPaperReceipt([],r),duplicate=appendPaperReceipt(first,r);
   assert.equal(duplicate.length,1);
   assert.equal(duplicate[0].id,r.id);
 });
 test('bounded receipts and invalid transition fail closed',()=>{
-  const x=begin(),r=makePaperReceipt(x.prior,x.after,x.cycle,x.evidence,C+3*M);
+  const x=begin(),r=makePaperReceipt(x.prior,x.after,x.cycle,x.evidence,C+3*M+3_000);
   assert.equal(appendPaperReceipt([{...r,id:'old'}],r,1).length,1);
   assert.throws(()=>makePaperReceipt(x.after,x.prior,x.cycle,{},C+3*M),/PAPER_RECEIPT_INVALID_TRANSITION/);
   assert.throws(()=>appendPaperReceipt([],r,1001),/PAPER_RECEIPT_INVALID_LIMIT/);
