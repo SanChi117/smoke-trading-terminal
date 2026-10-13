@@ -130,6 +130,17 @@
 
 ---
 
+## Pilot v31 — 2026-10-13
+
+- Owner reported the browser-local save and same-bar duplicate skip checks are working after Pilot v30. This is **user-verified local persistence/idempotence**, not an observed real V5 READY→OPEN→CLOSED trade.
+- Deployed AppDeploy **v31**, snapshot `1791882435231`, with isolated client-only `app/components/PilotHistoricalAudit.tsx` and `Test 12` user-facing acceptance. App status READY, QA reported no frontend/backend errors. No source changes to existing V5, pure PAPER reducer or live browser journal.
+- New [`#pilot`](https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#pilot) historical lab checks one chosen coin's previous 24 hours on genuine Binance USD-M 1w/1d/4h/15m/5m closed candles using original `analyzeLevelFlow`. Counts genuine READY/WATCH/BLOCKED, with bounded optional **hypothetical** 1m stop-first model for at most three real V5 READY signals. Historical best bid/ask unknown; explicitly modeled from next 1m opening with synthetic spread and existing slippage/fees; not evidence of executable PnL.
+- Isolated replay is ephemeral browser-local React state; it **never** writes to the forward PAPER or server journal. AppDeploy server cron still paused (`cron.json=[]`) due to HTTP451; 5 coins and manual cadence unchanged.
+- **Pending:** owner-browser click and real-market results of new audit; source deployment QA alone is not a completed Binance E2E execution, and full real market-generated PAPER open/close still unobserved.
+- [Detailed v31 acceptance](docs/V31_HISTORICAL_V5_MECHANICS_AUDIT_2026-10-13.md).
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
