@@ -75,7 +75,7 @@ export function makePaperReceipt(
   const quote = evidence.quote ?? null;
   const model = trade;
   return {
-    id: cycle.symbol + ':' + cycle.cycleCloseTime + ':' + action,
+    id: cycle.symbol + ':' + cycle.cycleCloseTime + ':' + action + ':REV' + after.revision,
     symbol: cycle.symbol,
     signalBarCloseAt: cycle.cycleCloseTime,
     checkedAt,
