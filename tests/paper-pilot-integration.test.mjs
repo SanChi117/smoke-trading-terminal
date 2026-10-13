@@ -410,3 +410,49 @@ test('local PAPER storage guard preserves external revisions instead of overwrit
   assert.deepEqual(memory.records.BTCUSDT.closed,[]);
   assert.equal(memory.records.BTCUSDT.executionAuthorized,false);
 });
+
+
+test('entry minute is only re-fetched before first checkpoint, not for 7-day-old checked positions', async () => {
+  const { planPaperMinuteWindow, planClosedMinuteBackfill } =
+    await import('../core/paper/minute-backfill.ts');
+  const entry = SIGNAL_TIME;
+  const firstEligible = BASE + 4 * ONE_MIN;
+  const initial = planPaperMinuteWindow({
+    enteredAt: entry, firstEligibleMinuteOpen: firstEligible,
+    lastCheckedMinuteOpen: null,
+  }, BASE + 7 * ONE_MIN);
+  assert.equal(initial.needsEntryAudit, true);
+  assert.equal(initial.requestStart, BASE + 3 * ONE_MIN);
+  assert.equal(initial.firstEligibleOpen, firstEligible);
+
+  const recentMinute = BASE + 7 * 24 * 60 * ONE_MIN + 5 * ONE_MIN;
+  const later = planPaperMinuteWindow({
+    enteredAt: entry, firstEligibleMinuteOpen: firstEligible,
+    lastCheckedMinuteOpen: recentMinute,
+  }, recentMinute + 2 * ONE_MIN);
+  assert.equal(later.needsEntryAudit, false);
+  assert.equal(later.requestStart, recentMinute + ONE_MIN);
+  assert.deepEqual(planClosedMinuteBackfill(later.requestStart, later.finalOpen)
+    .map(page => page.count), [1]);
+  assert.throws(() => planClosedMinuteBackfill(initial.requestStart, later.finalOpen),
+    /PAPER_MINUTE_BACKFILL_OVER_7_DAYS/);
+});
+
+test('paper minute cursor rejects forged future and pre-entry checkpoints', async () => {
+  const { planPaperMinuteWindow } = await import('../core/paper/minute-backfill.ts');
+  const good = {
+    enteredAt: SIGNAL_TIME,
+    firstEligibleMinuteOpen: BASE + 4 * ONE_MIN,
+    lastCheckedMinuteOpen: null,
+  };
+  const now = BASE + 8 * ONE_MIN;
+  assert.throws(() => planPaperMinuteWindow({
+    ...good, lastCheckedMinuteOpen: BASE + 2 * ONE_MIN,
+  }, now), /PAPER_MINUTE_CURSOR_INVALID/);
+  assert.throws(() => planPaperMinuteWindow({
+    ...good, lastCheckedMinuteOpen: BASE + 8 * ONE_MIN,
+  }, now), /PAPER_MINUTE_CURSOR_INVALID/);
+  assert.throws(() => planPaperMinuteWindow({
+    ...good, firstEligibleMinuteOpen: BASE + 5 * ONE_MIN,
+  }, now), /PAPER_MINUTE_CURSOR_INVALID/);
+});
