@@ -537,3 +537,49 @@ test('PAPER backup rejects manipulated lifetime PnL and revision-zero phantom wi
   assert.throws(()=>check({...state,open:opened.open}),
     /PAPER_BACKUP_INVALID_INITIAL_STATE/);
 });
+
+
+test('transient strategy fetch failure does not consume READY opportunity in same closed candle', () => {
+  const db = new VolatileDatabase();
+  const unavailable = cycle(BASE, {status:'ERROR',assessments:[]});
+  const failed = apply(db, unavailable,{},SIGNAL_TIME);
+  assert.equal(failed.outcome,'CHANGED');
+  assert.equal(failed.state.lastEntryAttempt,'STRATEGY_DATA_UNAVAILABLE');
+  assert.equal(failed.state.lastCycle,null);
+  assert.equal(failed.state.open,null);
+  const repeat = apply(db, unavailable,{},SIGNAL_TIME + 1_000);
+  assert.equal(repeat.outcome,'SKIPPED');
+  assert.equal(db.read('BTCUSDT').revision,failed.state.revision);
+  const recovered=apply(db,cycle(),{quote:marketQuote()},SIGNAL_TIME + 2_000);
+  assert.equal(recovered.outcome,'CHANGED');
+  assert.equal(recovered.state.lastCycle,BASE);
+  assert.equal(recovered.state.open?.signalCloseAt,BASE);
+  assert.equal(recovered.state.executionAuthorized,false);
+  const duplicate=apply(db,cycle(),{quote:marketQuote()},SIGNAL_TIME + 3_000);
+  assert.equal(duplicate.outcome,'SKIPPED');
+  assert.equal(db.read('BTCUSDT').open.id,recovered.state.open.id);
+  assert.equal(db.read('BTCUSDT').realizedNetUsdt,0);
+});
+
+test('transient missing quote does not burn a READY candle; retry expires by existing policy', () => {
+  const db = new VolatileDatabase();
+  const unavailable=apply(db,cycle(),{errorCode:'PAPER_QUOTE_UNAVAILABLE'},SIGNAL_TIME);
+  assert.equal(unavailable.state.lastCycle,null);
+  assert.equal(unavailable.state.lastEntryAttempt,'PAPER_QUOTE_UNAVAILABLE');
+  assert.equal(unavailable.state.open,null);
+  const repeat=apply(db,cycle(),{errorCode:'PAPER_QUOTE_UNAVAILABLE'},SIGNAL_TIME+1000);
+  assert.equal(repeat.outcome,'SKIPPED');
+  assert.equal(repeat.state.revision,unavailable.state.revision);
+  const recovered=apply(db,cycle(),{quote:marketQuote()},SIGNAL_TIME+2000);
+  assert.equal(recovered.state.open?.signalCloseAt,BASE);
+  assert.equal(recovered.state.lastCycle,BASE);
+  assert.equal(recovered.state.executionAuthorized,false);
+
+  const expiredDb=new VolatileDatabase();
+  apply(expiredDb,cycle(),{errorCode:'PAPER_QUOTE_UNAVAILABLE'},SIGNAL_TIME);
+  const late=apply(expiredDb,cycle(),{quote:marketQuote(BASE + 14*ONE_MIN)},
+    BASE+14*ONE_MIN);
+  assert.equal(late.state.open,null);
+  assert.equal(late.state.lastEntryAttempt,'STALE_OR_FUTURE_SIGNAL');
+  assert.equal(late.state.lastCycle,BASE);
+});
