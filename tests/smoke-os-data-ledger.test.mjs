@@ -57,7 +57,7 @@ test("Binance parser fails closed on corrupted OHLC, timestamps, volumes and quo
     /INVALID_BINANCE_CLOSE/);
   assert.throws(() => normalizeBinanceKline("BTCUSDT","1m",changed(6,60_000),60_100),
     /INVALID_BINANCE_KLINE_TIME/);
-  assert.throws(() => normalizeBinanceKline("BTCUSDT","1m",row(60_000,119_999),60_000),
+  assert.throws(() => normalizeBinanceKline("BTCUSDT","1m",row(60_000,119_999),59_999),
     /INVALID_BINANCE_KLINE_TIME/);
   assert.throws(() => normalizeBinanceKline("BTCUSDT","1m",row(1_000,60_999),61_100),
     /INVALID_BINANCE_KLINE_ALIGNMENT/);
@@ -102,6 +102,6 @@ test("weekly Monday and real calendar month boundaries are checked exactly", () 
     {afterOpenTime:january,beforeOpenTime:april,missingBars:2}
   ]);
   assert.throws(()=>normalizeBinanceKline("BTCUSDT","1M",
-    row(january,january+2_678_400_000-1),february+100),
+    row(february,february+2_678_400_000-1),march+100),
     /INVALID_BINANCE_KLINE_TIME/);
 });
