@@ -26,3 +26,13 @@ Status: PAPER-only browser pilot. V5 remains active. GitHub Next/Vinext and publ
 
 ## Current limitations
 AppDeploy build success does not prove a genuine OPEN/CLOSE happened. The browser must remain open or be visited manually. LocalStorage can be lost; store backups outside the browser. Automatic exchange execution, financial guarantees, and scheduled order execution are not part of this change.
+
+
+## 2026-10-13 AppDeploy follow-up stability patches (not GitHub Next migrations)
+
+- AppDeploy v38 added fail-closed localStorage readback/rollback and stale-tab detection before every PAPER write. A cross-tab localStorage check is not a transactional compare-and-swap; a server ledger is still necessary for durable concurrent execution.
+- AppDeploy v39 extended the in-browser isolated self-test to 16 deterministic scenarios. These synthetic test outcomes never enter the owner's PAPER journal. A user must click the test control to see live in-browser results; build success alone is not that proof.
+- AppDeploy v40 added three owner-authenticated, manual, read-only-snapshot-backup API operations: POST /api/pilot/browser-backups, GET /api/pilot/browser-backups, GET /api/pilot/browser-backups/:id. Owner-specific AppDeploy tables derive from verified user UUIDs. The endpoint validates PAPER-only JSON and performs a strong readback after saving. UI can list and preview its backups; restoring still needs local confirmation and rejects older revisions.
+- AppDeploy database copies improve recoverability but are not a proven independent off-host disaster-recovery solution. Keep downloaded JSON backups outside the browser.
+- These additions live in the AppDeploy Vite runtime only: backend/browser-paper-backups.ts, backend/index.ts, app/components/PilotBrowserPaper.tsx, app/components/PilotSelfTest.tsx, tests/tests.txt. They are not magically merged into the GitHub Next/Vinext main branch.
+- AppDeploy publish/readback and no-error QA were confirmed on v40. The authenticated HTTP endpoint, user-scoped data write/read/restore, cross-tab UI and a genuine PAPER READY->OPEN->CLOSE need actual manual/account-based E2E verification. Do not label them fully tested.
