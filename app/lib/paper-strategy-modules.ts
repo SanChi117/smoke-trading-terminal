@@ -57,15 +57,15 @@ export function analyzeActivePaperStrategy(
   bundle: TimeframeBundle,
   closeAt: number,
 ): MtfLevelAnalysis {
-  const module = modules.get(ACTIVE_PAPER_STRATEGY_ID);
-  if (!module || module.executionAuthorized !== false ||
+  const activeStrategy = modules.get(ACTIVE_PAPER_STRATEGY_ID);
+  if (!activeStrategy || activeStrategy.executionAuthorized !== false ||
       !Number.isSafeInteger(closeAt) || closeAt <= 0 ||
       !/^[A-Z0-9]{3,20}USDT$/.test(symbol) ||
       expectedFrames.some(tf => !Array.isArray(bundle[tf]) ||
         bundle[tf].length === 0)) {
     throw new Error('PAPER_ACTIVE_STRATEGY_OR_DATA_UNAVAILABLE');
   }
-  const result = module.analyze(symbol, bundle, closeAt);
+  const result = activeStrategy.analyze(symbol, bundle, closeAt);
   if (!result || result.symbol !== symbol ||
       !['ready', 'watch', 'blocked'].includes(result.state) ||
       !Number.isFinite(result.confidence) ||
