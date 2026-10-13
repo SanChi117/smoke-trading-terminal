@@ -76,6 +76,35 @@ export function evaluatePilotPaperCycle(
   if (prior.lastCycle !== null && cycle.cycleCloseTime <= prior.lastCycle) {
     return { outcome: 'SKIPPED', state: prior };
   }
+  // A transient unavailable strategy snapshot is NOT a processed candle.
+  // Keep the lastCycle watermark unchanged so the SAME closed bar can be
+  // retried with complete evidence. Repeated failures do not flood revisions.
+  if (!prior.open && cycle.status !== 'OK') {
+    if (prior.lastEntryAttempt === 'STRATEGY_DATA_UNAVAILABLE') {
+      return { outcome: 'SKIPPED', state: prior };
+    }
+    return { outcome: 'CHANGED', state: {
+      ...prior, revision: prior.revision + 1,
+      lastEntryAttempt: 'STRATEGY_DATA_UNAVAILABLE',
+      haltReason: null, lastChangedAt: now,
+    } };
+  }
+  if (!prior.open) {
+    const ready = cycle.assessments.find(item =>
+      item.state === 'ready' && item.side !== null &&
+      item.entry !== null && item.stop !== null && item.target !== null &&
+      item.barCloseTime === cycle.cycleCloseTime);
+    if (ready && (evidence.errorCode || !evidence.quote)) {
+      const reason = evidence.errorCode ?? 'PAPER_QUOTE_UNAVAILABLE';
+      if (prior.lastEntryAttempt === reason) {
+        return { outcome: 'SKIPPED', state: prior };
+      }
+      return { outcome: 'CHANGED', state: {
+        ...prior, revision: prior.revision + 1, lastEntryAttempt: reason,
+        haltReason: null, lastChangedAt: now,
+      } };
+    }
+  }
   let next: PilotPaperState = {
     ...prior,
     revision: prior.revision + 1,
