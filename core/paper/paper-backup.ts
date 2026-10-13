@@ -142,6 +142,24 @@ export function parseLocalPaperBackup(
         'INVALID_TRADE_' + symbol);
       seenTrades.add((item as Record<string, unknown>).id as string);
     }
+    // For up to 79 closed records the bounded history still covers every
+    // simulated close, so booked PnL must equal the sum of those results.
+    // At 80 records the oldest trades may have been trimmed; do not reconstruct
+    // the omitted history or pretend the tail is the lifetime total.
+    if ((record.closed as unknown[]).length < 80) {
+      const accounted = (record.closed as Array<{netPnlUsdt:number}>)
+        .reduce((total, trade) => total + trade.netPnlUsdt, 0);
+      assertValid(closeMoney(record.realizedNetUsdt, accounted),
+        'INVALID_TOTAL_PNL_' + symbol);
+    }
+    if (Number(record.revision) === 0) {
+      assertValid(record.open === null &&
+        (record.closed as unknown[]).length === 0 &&
+        closeMoney(record.realizedNetUsdt, 0) &&
+        record.lastEntryAttempt === null &&
+        record.haltReason === null,
+        'INVALID_INITIAL_STATE_' + symbol);
+    }
     if (object(record.open)) {
       assertValid(!seenTrades.has(record.open.id as string), 'DUPLICATE_OPEN_' + symbol);
     }
