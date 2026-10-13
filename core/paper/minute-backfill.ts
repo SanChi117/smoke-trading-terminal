@@ -56,3 +56,50 @@ export function verifyClosedMinutePage(
     throw Error('PAPER_MINUTE_BACKFILL_MISSING_OR_INVALID_PAGE');
   }
 }
+
+
+/**
+ * Limit the entry-minute uncertainty audit to the FIRST successful checkpoint.
+ * Once lastCheckedMinuteOpen advances, that original minute has already been
+ * checked and need not be repeatedly fetched for the lifetime of the position.
+ * This prevents perpetual 7-day-backfill failures on normally monitored trades.
+ */
+export function planPaperMinuteWindow(
+  position: Readonly<{
+    enteredAt: number;
+    firstEligibleMinuteOpen: number;
+    lastCheckedMinuteOpen: number | null;
+  }>,
+  now: number,
+): Readonly<{
+  firstEligibleOpen: number;
+  requestStart: number;
+  finalOpen: number;
+  needsEntryAudit: boolean;
+}> {
+  if (!Number.isSafeInteger(now) || now <= 0 ||
+      !Number.isSafeInteger(position.enteredAt) ||
+      position.enteredAt <= 0 || position.enteredAt > now ||
+      !Number.isSafeInteger(position.firstEligibleMinuteOpen) ||
+      position.firstEligibleMinuteOpen % MINUTE !== 0 ||
+      position.firstEligibleMinuteOpen !== Math.ceil(position.enteredAt / MINUTE) * MINUTE ||
+      (position.lastCheckedMinuteOpen !== null &&
+        (!Number.isSafeInteger(position.lastCheckedMinuteOpen) ||
+         position.lastCheckedMinuteOpen % MINUTE !== 0 ||
+         position.lastCheckedMinuteOpen < position.firstEligibleMinuteOpen ||
+         position.lastCheckedMinuteOpen + MINUTE > now))) {
+    throw Error('PAPER_MINUTE_CURSOR_INVALID');
+  }
+
+  const firstEligibleOpen = position.lastCheckedMinuteOpen === null
+    ? position.firstEligibleMinuteOpen : position.lastCheckedMinuteOpen + MINUTE;
+  const needsEntryAudit = position.lastCheckedMinuteOpen === null &&
+    position.enteredAt % MINUTE !== 0;
+  const entryMinuteOpen = Math.floor(position.enteredAt / MINUTE) * MINUTE;
+  const requestStart = needsEntryAudit
+    ? Math.min(firstEligibleOpen, entryMinuteOpen)
+    : firstEligibleOpen;
+  const finalOpen = Math.floor(now / MINUTE) * MINUTE - MINUTE;
+
+  return {firstEligibleOpen,requestStart,finalOpen,needsEntryAudit};
+}
