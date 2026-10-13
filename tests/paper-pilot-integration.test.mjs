@@ -392,3 +392,21 @@ test('minute backfill rejects 7d+ stale recovery and gaps instead of inventing T
   assert.throws(()=>verifyClosedMinutePage([{...good[0],high:98},good[1],good[2]],page),
     /PAPER_MINUTE_BACKFILL_MISSING_OR_INVALID_PAGE/);
 });
+
+test('local PAPER storage guard preserves external revisions instead of overwriting', async () => {
+  const { assertPaperSnapshotUnchanged } = await import('../core/paper/paper-storage-guard.ts');
+  const memory={version:1,records:{BTCUSDT:blankPilotPaperState('BTCUSDT')},notes:[],receipts:[]};
+  const same=structuredClone(memory);
+  assert.doesNotThrow(()=>assertPaperSnapshotUnchanged(memory,same));
+  const newer=structuredClone(memory);
+  newer.records.BTCUSDT.revision++;
+  assert.throws(()=>assertPaperSnapshotUnchanged(memory,newer),
+    /PAPER_EXTERNAL_STORAGE_CHANGE_RELOAD_REQUIRED/);
+  const noteChanged=structuredClone(memory);
+  noteChanged.notes.push({symbol:'BTCUSDT',status:'ERROR',state:'DATA_FAILURE',
+    message:'PAPER_UNAVAILABLE',at:BASE});
+  assert.throws(()=>assertPaperSnapshotUnchanged(memory,noteChanged),
+    /PAPER_EXTERNAL_STORAGE_CHANGE_RELOAD_REQUIRED/);
+  assert.deepEqual(memory.records.BTCUSDT.closed,[]);
+  assert.equal(memory.records.BTCUSDT.executionAuthorized,false);
+});
