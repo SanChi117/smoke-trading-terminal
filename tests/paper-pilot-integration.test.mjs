@@ -507,3 +507,33 @@ test('PAPER restore rejects modified risk budget on otherwise valid open positio
     ...packet.paper,records:{BTCUSDT:forged},
   }},['BTCUSDT'],SIGNAL_TIME+ONE_MIN),/PAPER_BACKUP_INVALID_OPEN/);
 });
+
+
+test('PAPER backup rejects manipulated lifetime PnL and revision-zero phantom wins', async () => {
+  const {parseLocalPaperBackup}=await import('../core/paper/paper-backup.ts');
+  const state=blankPilotPaperState('BTCUSDT');
+  const packet={
+    format:'SMOKE_BROWSER_PAPER_BACKUP_V1',exportedAt:SIGNAL_TIME,
+    paper:{version:1,records:{BTCUSDT:state},notes:[],receipts:[]},
+  };
+  const check=record=>parseLocalPaperBackup({...packet,paper:{
+    ...packet.paper,records:{BTCUSDT:record},
+  }},['BTCUSDT'],SIGNAL_TIME);
+  assert.doesNotThrow(()=>check(state));
+  assert.throws(()=>check({...state,realizedNetUsdt:999}),
+    /PAPER_BACKUP_INVALID_TOTAL_PNL/);
+
+  const opened=evaluatePilotPaperCycle(state,cycle(),{quote:marketQuote()},SIGNAL_TIME).state;
+  const closed=evaluatePilotOpenPosition(opened,{
+    minutes:minutes(4,5,{5:{low:97,high:101}}),
+  },BASE+6*ONE_MIN).state;
+  const now=BASE+7*ONE_MIN;
+  assert.doesNotThrow(()=>parseLocalPaperBackup({...packet,exportedAt:now,paper:{
+    ...packet.paper,records:{BTCUSDT:closed},
+  }},['BTCUSDT'],now));
+  assert.throws(()=>parseLocalPaperBackup({...packet,exportedAt:now,paper:{
+    ...packet.paper,records:{BTCUSDT:{...closed,realizedNetUsdt:100_000}},
+  }},['BTCUSDT'],now),/PAPER_BACKUP_INVALID_TOTAL_PNL/);
+  assert.throws(()=>check({...state,open:opened.open}),
+    /PAPER_BACKUP_INVALID_INITIAL_STATE/);
+});
