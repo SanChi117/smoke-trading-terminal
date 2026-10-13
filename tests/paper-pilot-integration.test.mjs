@@ -358,3 +358,37 @@ test('PAPER backup parser refuses fabricated trades, corrupted open position and
     id:'FORGED_RECEIPT',executionAuthorized:true,
   }]}}),/PAPER_BACKUP_INVALID_RECEIPT/);
 });
+
+
+test('minute backfill splits closed 1m periods across Binance page limits without gaps', async () => {
+  const { planClosedMinuteBackfill, verifyClosedMinutePage } = await import('../core/paper/minute-backfill.ts');
+  const start = BASE + 60_000;
+  const pages = planClosedMinuteBackfill(start, start + 2_000 * ONE_MIN);
+  assert.equal(pages.length,3);
+  assert.deepEqual(pages.map(x=>x.count),[900,900,201]);
+  for (const page of pages) {
+    assert.equal(page.endTime, page.startTime + page.count * ONE_MIN - 1);
+    const bars = Array.from({length:page.count},(_,i)=>({
+      time:page.startTime + i*ONE_MIN,open:100,high:101,low:99,close:100,volume:120,
+    }));
+    assert.doesNotThrow(()=>verifyClosedMinutePage(bars,page));
+  }
+  assert.equal(pages.at(-1).endTime,start + 2_001 * ONE_MIN - 1);
+});
+
+test('minute backfill rejects 7d+ stale recovery and gaps instead of inventing TP', async () => {
+  const { planClosedMinuteBackfill, verifyClosedMinutePage } = await import('../core/paper/minute-backfill.ts');
+  const start=BASE + ONE_MIN;
+  assert.throws(()=>planClosedMinuteBackfill(start,start+11_000*ONE_MIN),
+    /PAPER_MINUTE_BACKFILL_OVER_7_DAYS/);
+  assert.throws(()=>planClosedMinuteBackfill(start+7,start+ONE_MIN),
+    /PAPER_MINUTE_BACKFILL_INVALID_TIME/);
+  const page=planClosedMinuteBackfill(start,start+2*ONE_MIN)[0];
+  const good=[0,1,2].map(x=>({
+    time:start+x*ONE_MIN,open:100,high:101,low:99,close:100,volume:1,
+  }));
+  assert.throws(()=>verifyClosedMinutePage([good[0],good[2]],page),
+    /PAPER_MINUTE_BACKFILL_MISSING_OR_INVALID_PAGE/);
+  assert.throws(()=>verifyClosedMinutePage([{...good[0],high:98},good[1],good[2]],page),
+    /PAPER_MINUTE_BACKFILL_MISSING_OR_INVALID_PAGE/);
+});
