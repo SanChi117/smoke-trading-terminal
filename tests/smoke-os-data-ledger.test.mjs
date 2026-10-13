@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { aggregateHealth, detectKlineGaps, normalizeBinanceKline } from "../services/market-data/binance-normalizer.ts";
+import {validateClosedStrategyBundle} from "../core/market/strategy-candles.ts";
 
 const row = (openTime, closeTime) => [openTime, "100", "102", "99", "101", "10", closeTime, "1005", 42, "6", "603", "0"];
 
@@ -104,4 +105,50 @@ test("weekly Monday and real calendar month boundaries are checked exactly", () 
   assert.throws(()=>normalizeBinanceKline("BTCUSDT","1M",
     row(february,february+2_678_400_000-1),march+100),
     /INVALID_BINANCE_KLINE_TIME/);
+});
+
+
+test("future strategies receive only closed, aligned, contiguous multi-TF candles", () => {
+  const duration={'1w':604_800_000,'1d':86_400_000,
+    '4h':14_400_000,'15m':900_000,'5m':300_000};
+  const asOf=Date.UTC(2026,9,14,12);
+  const lastOpen={
+    '1w':Date.UTC(2026,9,5),
+    '1d':Date.UTC(2026,9,13),
+    '4h':Date.UTC(2026,9,14,8),
+    '15m':Date.UTC(2026,9,14,11,45),
+    '5m':Date.UTC(2026,9,14,11,55),
+  };
+  const bundle=Object.fromEntries(Object.keys(duration).map(tf=>[tf,
+    [lastOpen[tf]-duration[tf],lastOpen[tf]].map(time=>({
+      time,open:100,high:105,low:95,close:101,volume:100,
+    }))
+  ]));
+  const result=validateClosedStrategyBundle(bundle,asOf);
+  assert.equal(Object.isFrozen(result),true);
+  assert.equal(Object.isFrozen(result['5m']),true);
+  assert.equal(result['5m'].at(-1).time,lastOpen['5m']);
+  assert.deepEqual(result['15m'],bundle['15m']);
+  assert.throws(()=>validateClosedStrategyBundle(bundle,asOf+1),
+    /STRATEGY_BUNDLE_INVALID_ARGUMENTS/);
+  assert.throws(()=>validateClosedStrategyBundle({...bundle,'1h':[]},asOf),
+    /STRATEGY_BUNDLE_MISSING_OR_FOREIGN_FRAME/);
+  assert.throws(()=>validateClosedStrategyBundle({...bundle,'1w':[]},asOf),
+    /STRATEGY_BUNDLE_INSUFFICIENT_1w/);
+  const future=structuredClone(bundle);
+  future['5m'][1].time=asOf;
+  assert.throws(()=>validateClosedStrategyBundle(future,asOf),
+    /STRATEGY_BUNDLE_UNCLOSED_OR_CORRUPT_5m/);
+  const missing=structuredClone(bundle);
+  missing['5m'][0].time-=300_000;
+  assert.throws(()=>validateClosedStrategyBundle(missing,asOf),
+    /STRATEGY_BUNDLE_GAPPED_5m/);
+  const corrupted=structuredClone(bundle);
+  corrupted['4h'][1].high=90;
+  assert.throws(()=>validateClosedStrategyBundle(corrupted,asOf),
+    /STRATEGY_BUNDLE_UNCLOSED_OR_CORRUPT_4h/);
+  const stale=structuredClone(bundle);
+  stale['15m']=stale['15m'].map(bar=>({...bar,time:bar.time-900_000}));
+  assert.throws(()=>validateClosedStrategyBundle(stale,asOf),
+    /STRATEGY_BUNDLE_STALE_15m/);
 });
