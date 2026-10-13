@@ -36,6 +36,10 @@ function finite(x: unknown): x is number {
 function positive(x: unknown): x is number {
   return finite(x) && x > 0;
 }
+function closeMoney(a: unknown, b: number): boolean {
+  return finite(a) && Number.isFinite(b) &&
+    Math.abs(a - b) <= Math.max(1e-7, Math.abs(b) * 1e-8);
+}
 function string(x: unknown, max = 500): x is string {
   return typeof x === 'string' && x.length > 0 && x.length <= max;
 }
@@ -92,7 +96,13 @@ export function parseLocalPaperBackup(
         positive(pos.entry) && positive(pos.stop) && positive(pos.target) &&
         positive(pos.quantity) && positive(pos.initialRiskUsdt) &&
         finite(pos.entryFeeUsdt) && Number(pos.entryFeeUsdt) >= 0 &&
-        positive(pos.grossRr) && time(pos.firstEligibleMinuteOpen, now + 60_000) &&
+        positive(pos.grossRr) &&
+        closeMoney(pos.initialRiskUsdt,
+          Math.abs(Number(pos.entry) - Number(pos.stop)) * Number(pos.quantity)) &&
+        closeMoney(pos.grossRr,
+          Math.abs(Number(pos.target) - Number(pos.entry)) /
+          Math.abs(Number(pos.entry) - Number(pos.stop))) &&
+        time(pos.firstEligibleMinuteOpen, now + 60_000) &&
         (pos.lastCheckedMinuteOpen === null ||
           time(pos.lastCheckedMinuteOpen, now)) &&
         (pos.lastCheckedMinuteOpen === null ||
@@ -117,7 +127,18 @@ export function parseLocalPaperBackup(
         finite(item.grossPnlUsdt) && finite(item.netPnlUsdt) &&
         finite(item.feesUsdt) && Number(item.feesUsdt) >= 0 &&
         finite(item.realizedR) && string(item.entryCoverageWarning) &&
-        typeof item.conservativeStopFirst === 'boolean',
+        typeof item.conservativeStopFirst === 'boolean' &&
+        (item.side === 'long'
+          ? Number(item.stop) < Number(item.entry) && Number(item.entry) < Number(item.target)
+          : Number(item.target) < Number(item.entry) && Number(item.entry) < Number(item.stop)) &&
+        closeMoney(item.grossPnlUsdt,
+          (item.side === 'long'
+            ? Number(item.exit) - Number(item.entry)
+            : Number(item.entry) - Number(item.exit)) * Number(item.quantity)) &&
+        closeMoney(item.netPnlUsdt,Number(item.grossPnlUsdt) - Number(item.feesUsdt)) &&
+        (Math.abs(Number(item.netPnlUsdt)) <= 1e-7 ||
+          Math.sign(Number(item.realizedR)) === Math.sign(Number(item.netPnlUsdt))),
+
         'INVALID_TRADE_' + symbol);
       seenTrades.add((item as Record<string, unknown>).id as string);
     }
