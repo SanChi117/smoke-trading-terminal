@@ -141,6 +141,15 @@
 
 ---
 
+## Mechanics data-integrity checkpoint — AppDeploy v32 (2026-10-13)
+
+- User mobile screenshot of `#pilot` v31 **BTCUSDT only**: 96 closed 15m bars analyzed, 0 READY, 96 WATCH, 0 BLOCKED. This is not direct evidence about the other four coins. User asked to defer strategy signal-rate/zone logic changes until core mechanics are validated.
+- AppDeploy **v32** snapshot `1791884602266` deployed READY, QA no frontend/backend/network errors. Added `PilotCandleParity` UI + shared pure `core/market/klines-parity.ts`: genuine Binance USD-M browser data, last four closed 15m bars reconciled against 15 consecutive 1m bars each, with OHLC/volume and gap/duplicate validation. No V5/PAPER/trading changes, stopped server cron still `[]`.
+- Added 7 mandatory pure parity tests, CI [terminal-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38378214478) and [level-flow-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38378214440) for commit `48700e4b`. **AppDeploy v32 code deployed but direct owner-browser market-data parity PASS/FAIL not yet observed.**
+- [V32 acceptance instructions](docs/V32_KLINE_PARITY_AUDIT_2026-10-13.md); after confirming candle integrity resume truthful independent PAPER lifecycle proof without synthetic READY or strategy simplifications.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
