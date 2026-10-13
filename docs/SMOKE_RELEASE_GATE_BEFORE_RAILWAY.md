@@ -26,7 +26,9 @@ Evidence must be tracked separately:
 | Cross-tab conflict detection and readback rollback | AppDeploy v38+ source, deterministic helper tests | DEPLOYED, manual E2E UNVERIFIED |
 | Local backup upload/preview/confirm | AppDeploy v36+ source | DEPLOYED, manual E2E UNVERIFIED |
 | User-isolated AppDeploy cloud copy API | AppDeploy v40 source | DEPLOYED, authenticated E2E UNVERIFIED |
-| Integrity of modeled gross/net PnL and bounded journal totals during backup import | GitHub PR pure-core updates after v41 | CI PENDING / NOT YET DEPLOYED |
+| Integrity of modeled gross/net PnL and bounded journal totals during backup import | GitHub PR pure-core tests after v41 | CI PASS, NOT YET DEPLOYED |
+| Binance kline normalizer rejects malformed OHLCV, mixed instruments, wrong weekly/month boundaries | GitHub shared market-data normalizer + deterministic tests | GITHUB CODED, NOT APPDEPLOY-DEPLOYED |
+| Future module closed multi-timeframe gate rejects gapped, stale and partial candles | GitHub core/market/strategy-candles.ts (not wired into V5) | GITHUB CODED, NOT ACTIVE |
 | Binance USD-M direct browser access across symbols/TFs | Browser path exists | CURRENT REAL-MARKET E2E UNVERIFIED |
 | Server-side autonomous PAPER and scheduler | AppDeploy server config explicitly paused due to HTTP 451; browser manual workflow | BLOCKED |
 | 24/7 durable journal with transactional backend / recovery | Not implemented or exercised for the present browser research engine | BLOCKED |
@@ -68,3 +70,19 @@ Evidence must be tracked separately:
 ## Deployment guard / project policy
 
 A green CI check proves only the tested code on a commit. AppDeploy 'ready' only means deployment built and its limited QA found no recorded crash. Neither proves that scheduled 24/7 scanning or real-market PAPER events work.
+
+## 2026-10-14 additional stability hardening (GitHub only)
+
+- Shared market-data normalizer now checks OHLCV coherence, positive prices,
+  nonnegative volumes/trades, exact 1w Monday-UTC and 1M calendar closes,
+  source/TF/symbol isolation when detecting gaps, and duplicate bars.
+- Independent `validateClosedStrategyBundle` preflights 1w/1d/4h/15m/5m
+  candles for future-entry modules: no incomplete candle, lookahead, stale tail,
+  timestamp misalignment, gap, or malformed candle can silently pass.
+- Neither change activates a strategy or alters published AppDeploy V5.
+  These are GitHub source/test changes only until the two runtimes are reconciled.
+- A valid current, still-forming Binance candle may appear in raw market streams.
+  The normalized candle exposes `closed:false`; strategy preflight rejects
+  partial candles explicitly. Do not misinterpret partial market data as a feed error.
+- Both GitHub workflow statuses need to be checked against the latest exact SHA
+  before claiming this row CI PASS. E2E on production stays UNVERIFIED.
