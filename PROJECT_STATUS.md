@@ -150,6 +150,17 @@
 
 ---
 
+## Entry-minute PAPER protection — AppDeploy v33 (2026-10-13)
+
+- User asked "Что дальше?" after v32 parity module installation; no real browser `4/4 PASS` evidence submitted yet. Strategy logic and rates remain frozen.
+- Audited real PAPER flow and discovered that the 1m candle **containing an intraminute virtual entry** had been skipped entirely, potentially missing a STOP or TARGET touch and overstating hypothetical PnL.
+- Added pure [`core/paper/entry-minute-audit.ts`](core/paper/entry-minute-audit.ts) and 7 test scenarios in [`tests/entry-minute-audit.test.mjs`](tests/entry-minute-audit.test.mjs). Conservative policy: fetch entire closed 1m entry candle; if it touches either SL or TP at any point, mark `PAPER_ENTRY_MINUTE_TOUCH_AMBIGUOUS` and HALT settlement; invalid/missing/unfinished data also HALTs. No false precision about pre-vs-post-entry touch times.
+- Integrated guard into **browser-only** `PilotBrowserPaper`, reading entry minute via existing Binance Futures historical 1m request before later stop-first minute settlement. Persistent journal format, old records, V5 and local state unchanged.
+- AppDeploy **v33** `1791893800925` READY, QA no frontend/backend/network errors; app guard source matches GitHub exactly. CI commit `f090bdb7` [terminal-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38396010361), [level-flow-ci PASS](https://github.com/SanChi117/smoke-trading-terminal/actions/runs/38396010397). No autonomous server scan (`cron.json=[]`, HTTP451 remains).
+- Still pending: real browser parity `4/4`, actual V5 READY, actual quote-derived paper OPEN and STOP/TARGET/HALT; controlled tests are not proof of live yields. [v33 audit](docs/V33_ENTRY_MINUTE_SAFETY_2026-10-13.md).
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
