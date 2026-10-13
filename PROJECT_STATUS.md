@@ -120,6 +120,16 @@
 
 ---
 
+## V30 browser PAPER stability checkpoint — 2026-10-13
+
+- AppDeploy `smoke-trading-terminal-0kl792` now **v30**, snapshot `1791881577363`, state **READY**; reported QA frontend/backend/network errors zero. Existing server cron remains stopped (`cron.json=[]`) because Binance Futures from AppDeploy returns HTTP 451.
+- **Operational five-coin V5/PAPER is browser-local** (not 24/7). Browser V5 and PAPER panels moved above a collapsed server 451 archive; server archival records remain untouched. Trading strategy, scanner universe, live-trading disabled state unchanged.
+- PAPER UI includes `Проверить сохранение` (read back localStorage state and compare five economic-state records), `ревизия` visible per symbol, and `Сохранить копию журнала` browser-initiated JSON backup. Test 11 added to `tests/tests.txt` for repeated same 15m bar SKIP and reload persistence.
+- Deployment source verified: v30 has these components, no QA-reported errors. **Still missing** independent confirmation that owner's browser passed persistence, reload and duplicate-skip tests; also no actual V5 READY→PAPER OPEN→CLOSED on market data.
+- [Manual acceptance checklist](docs/BROWSER_PAPER_V30_ACCEPTANCE_2026-10-13.md). Keep browser storage preserved and do not invent virtual trades or claim resolved 451.
+
+---
+
 ## Current checkpoint
 
 - Master specification: `SMOKE_Trading_OS_Master_TZ_v1.0`
