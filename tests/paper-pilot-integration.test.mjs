@@ -276,3 +276,30 @@ test('entry partial minute is never prematurely settled; FLAT monitor is rejecte
   assert.throws(() => evaluatePilotOpenPosition(
     blankPilotPaperState('BTCUSDT'), {}, SIGNAL_TIME), /PAPER_INVALID_POSITION_MONITOR_INPUT/);
 });
+
+
+test('paper module registry keeps V5 active; new strategies remain inactive until reviewed switch', async () => {
+  const {
+    ACTIVE_PAPER_STRATEGY_ID,
+    listPaperStrategyModules,
+    registerPaperStrategyModule,
+    analyzeActivePaperStrategy,
+  } = await import('../app/lib/paper-strategy-modules.ts');
+  assert.equal(ACTIVE_PAPER_STRATEGY_ID, 'V5_UNMODIFIED');
+  assert.equal(listPaperStrategyModules().filter(x => x.active).length, 1);
+  assert.equal(listPaperStrategyModules().find(x => x.active).id, 'V5_UNMODIFIED');
+  const contender = {
+    id:'NEXT_ENTRY_V1',version:'0.0.1',executionAuthorized:false,
+    requiredTimeframes:['1w','1d','4h','15m','5m'],
+    analyze:() => { throw Error('UNAUTHORIZED_STRATEGY_CALLED'); },
+  };
+  registerPaperStrategyModule(contender);
+  assert.equal(listPaperStrategyModules().find(x => x.id === contender.id).active, false);
+  assert.throws(() => registerPaperStrategyModule(contender),
+    /PAPER_STRATEGY_MODULE_INVALID_OR_DUPLICATED/);
+  assert.throws(() => registerPaperStrategyModule({
+    ...contender,id:'LIVE_DANGEROUS',executionAuthorized:true,
+  }), /PAPER_STRATEGY_MODULE_INVALID_OR_DUPLICATED/);
+  assert.throws(() => analyzeActivePaperStrategy('BTCUSDT', {}, BASE),
+    /PAPER_ACTIVE_STRATEGY_OR_DATA_UNAVAILABLE/);
+});
