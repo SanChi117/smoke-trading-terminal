@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  blankPilotPaperState, evaluatePilotPaperCycle,
+  blankPilotPaperState, evaluatePilotPaperCycle, evaluatePilotOpenPosition,
 } from '../core/paper/paper-pilot-state.ts';
 
 const BASE = Date.UTC(2026, 9, 12, 18, 15);
@@ -202,4 +202,77 @@ test('rejects corrupted or future-dated persisted input with no journal mutation
   assert.throws(() => evaluatePilotPaperCycle(
     blankPilotPaperState('BTCUSDT'), cycle(BASE + BAR_15),
     {quote:marketQuote()}, SIGNAL_TIME), /PAPER_INVALID_TRANSITION_INPUT/);
+});
+
+
+test('OPEN monitored within SAME 15m candle: STOP settles without new V5 signal', () => {
+  const db = new VolatileDatabase();
+  const opened = apply(db, cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  assert.equal(opened.lastCycle, BASE);
+  const now = BASE + 6 * ONE_MIN;
+  const result = evaluatePilotOpenPosition(opened, {
+    minutes: minutes(4, 5, {5:{low:97, high:108}}),
+  }, now);
+  assert.equal(result.outcome, 'CHANGED');
+  assert.equal(result.state.open, null);
+  assert.equal(result.state.closed[0].cause, 'STOP');
+  assert.equal(result.state.closed[0].conservativeStopFirst, true);
+  assert.equal(result.state.lastCycle, BASE);
+  assert.equal(result.state.executionAuthorized, false);
+  assert.ok(result.state.realizedNetUsdt < 0);
+  const duplicate = evaluatePilotPaperCycle(result.state, cycle(), {}, now);
+  assert.equal(duplicate.outcome, 'SKIPPED');
+  assert.equal(duplicate.state.realizedNetUsdt, result.state.realizedNetUsdt);
+});
+
+test('open PAPER minute checkpoint advances cursor without advancing 15m or duplicating PnL', () => {
+  const opened = evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  const checkpoint = evaluatePilotOpenPosition(opened, {minutes: minutes(4, 5)},
+    BASE + 6 * ONE_MIN);
+  assert.equal(checkpoint.outcome, 'CHANGED');
+  assert.equal(checkpoint.state.open.lastCheckedMinuteOpen, BASE + 5 * ONE_MIN);
+  assert.equal(checkpoint.state.lastCycle, BASE);
+  const replay = evaluatePilotOpenPosition(checkpoint.state, {minutes: []},
+    BASE + 6 * ONE_MIN);
+  assert.equal(replay.outcome, 'SKIPPED');
+  assert.equal(replay.state.revision, checkpoint.state.revision);
+  assert.equal(replay.state.realizedNetUsdt, 0);
+  const advanced = evaluatePilotOpenPosition(checkpoint.state,
+    {minutes: [mbar(6)]}, BASE + 7 * ONE_MIN);
+  assert.equal(advanced.state.open.lastCheckedMinuteOpen, BASE + 6 * ONE_MIN);
+  assert.equal(advanced.state.lastCycle, BASE);
+  assert.equal(advanced.state.realizedNetUsdt, 0);
+});
+
+test('missing minute HALTs but can recover inside same 15m with no invented exit', () => {
+  const opened = evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  const halt = evaluatePilotOpenPosition(opened,
+    {errorCode:'MISSING_OR_INVALID_ONE_MINUTE_BAR'}, BASE + 6 * ONE_MIN);
+  assert.equal(halt.state.open.id, opened.open.id);
+  assert.equal(halt.state.closed.length, 0);
+  assert.equal(halt.state.haltReason, 'MISSING_OR_INVALID_ONE_MINUTE_BAR');
+  const repeated = evaluatePilotOpenPosition(halt.state,
+    {errorCode:'MISSING_OR_INVALID_ONE_MINUTE_BAR'}, BASE + 6 * ONE_MIN);
+  assert.equal(repeated.outcome, 'SKIPPED');
+  const resumed = evaluatePilotOpenPosition(halt.state, {
+    minutes: minutes(4, 6, {6:{high:108,low:99}}),
+  }, BASE + 7 * ONE_MIN);
+  assert.equal(resumed.state.haltReason, null);
+  assert.equal(resumed.state.open, null);
+  assert.equal(resumed.state.closed.length, 1);
+  assert.equal(resumed.state.closed[0].cause, 'TARGET');
+  assert.equal(resumed.state.lastCycle, BASE);
+});
+
+test('entry partial minute is never prematurely settled; FLAT monitor is rejected', () => {
+  const opened = evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  const tooEarly = evaluatePilotOpenPosition(opened, {minutes:[]},
+    BASE + 4 * ONE_MIN + 30_000);
+  assert.equal(tooEarly.outcome, 'SKIPPED');
+  assert.equal(tooEarly.state, opened);
+  assert.throws(() => evaluatePilotOpenPosition(
+    blankPilotPaperState('BTCUSDT'), {}, SIGNAL_TIME), /PAPER_INVALID_POSITION_MONITOR_INPUT/);
 });
