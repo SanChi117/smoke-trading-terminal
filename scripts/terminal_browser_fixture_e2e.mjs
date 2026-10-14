@@ -70,7 +70,7 @@ const browser=await chromium.launch({headless:true});
 try{
   const page=await browser.newPage({viewport:{width:1360,height:900}});
   page.setDefaultTimeout(25_000);
-  await page.route('https://fapi.binance.com/**',async route=>{
+  const binanceFixture=async route=>{
     const u=new URL(route.request().url()),path=u.pathname;
     let body;
     if(path==='/fapi/v1/klines')body=klines(u.searchParams);
@@ -90,7 +90,8 @@ try{
     else body=[];
     await route.fulfill({status:200,contentType:'application/json',
       headers:{'Access-Control-Allow-Origin':'*'},body:JSON.stringify(body)});
-  });
+  };
+  await page.route('https://fapi.binance.com/**',binanceFixture);
   await page.goto(BASE,{waitUntil:'domcontentloaded',timeout:30_000});
   await page.getByRole('heading',{name:/BTC\/USDT Perpetual/})
     .waitFor({state:'visible',timeout:60_000});
@@ -102,6 +103,24 @@ try{
   await page.getByRole('button',{name:'15m',exact:true}).click();
   await page.locator('[aria-label="BTCUSDT professional candlestick chart"]')
     .getByText(/BTCUSDT.*15m.*UTC/).waitFor({state:'visible'});
+  // Chart keyboard pan and zoom must actually persist a per-symbol visible range.
+  const chart=page.locator('[aria-label="BTCUSDT professional candlestick chart"]');
+  await chart.focus();
+  await chart.press('ArrowLeft');
+  const viewKey=await page.waitForFunction(()=>{
+    return Object.keys(localStorage).find(key=>key.startsWith('smoke-pro-view:')&&key.includes('BTCUSDT')&&key.endsWith(':15m')&&localStorage.getItem(key));
+  },null,{timeout:10_000}).then(handle=>handle.jsonValue());
+  assert.ok(viewKey,'CHART_VIEW_NOT_SAVED_AFTER_PAN');
+  const afterPan=JSON.parse(await page.evaluate(key=>localStorage.getItem(key),viewKey));
+  assert.ok(afterPan.to>afterPan.from,'INVALID_CHART_PAN_RANGE');
+  await chart.press('=');
+  await page.waitForFunction(({key,span})=>{
+    const raw=localStorage.getItem(key);
+    if(!raw)return false;
+    const view=JSON.parse(raw);
+    return view.to-view.from<span;
+  },{key:viewKey,span:afterPan.to-afterPan.from},{timeout:10_000});
+  await chart.press('r');
   await page.getByRole('button',{name:'Сканер',exact:true}).first().click();
   await page.getByRole('heading',{name:'Уровневые сетапы V5'}).waitFor();
   await page.getByRole('textbox',{name:'Поиск монеты'}).fill('ETH');
@@ -125,6 +144,18 @@ try{
     for(let i=1;i<frames.length;i++)
       assert.ok(frames[i].start>frames[i-1].start,'NOT_FORWARD_PAGED');
   }
+  // A 30-day test must use contiguous historical pages well beyond 1500 bars.
+  const longOffset=historicalRequests.length;
+  await page.locator('select').last().selectOption('30');
+  await page.getByRole('button',{name:'Запустить'}).click();
+  await page.getByText('Сделки',{exact:true}).waitFor({state:'visible',timeout:170_000});
+  const long5m=historicalRequests.slice(longOffset).filter(x=>x.tf==='5m');
+  const long15m=historicalRequests.slice(longOffset).filter(x=>x.tf==='15m');
+  assert.ok(long5m.length>=10,'30D_BACKTEST_INCOMPLETE_5M '+long5m.length);
+  assert.ok(long15m.length>=4,'30D_BACKTEST_INCOMPLETE_15M '+long15m.length);
+  for(const frames of [long5m,long15m])for(let i=1;i<frames.length;i++)
+    assert.ok(frames[i].start>frames[i-1].start,'30D_NOT_FORWARD_PAGED');
+
   // Separate synthetic error phase: a previously successful backtest must NOT
   // remain on screen if its next attempt cannot load full history.
   await page.route('https://fapi.binance.com/fapi/v1/klines?*',async route=>{
@@ -168,11 +199,35 @@ try{
     .filter({hasText:'ETHUSDT'}).locator('td').last().textContent();
   assert.ok(recoveredStatus&&recoveredStatus.trim()!=='НЕ ПРОВЕРЕН',
     'RECOVERED_ETH_STILL_UNCHECKED');
+  // Mobile Chromium runs separately in a disposable profile.
+  const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  await mobile.route('https://fapi.binance.com/**',binanceFixture);
+  await mobile.goto(BASE,{waitUntil:'domcontentloaded',timeout:30_000});
+  await mobile.getByRole('heading',{name:/BTC\\/USDT Perpetual/})
+    .waitFor({state:'visible',timeout:60_000});
+  const mobileChart=mobile.locator('[aria-label="BTCUSDT professional candlestick chart"]');
+  await mobileChart.waitFor({state:'visible',timeout:30_000});
+  for(const interval of ['1m','5m','15m','4h','1d']){
+    await mobile.getByRole('button',{name:interval,exact:true}).click();
+    await mobileChart.getByText(new RegExp('BTCUSDT.*'+interval+'.*UTC'))
+      .waitFor({state:'visible',timeout:30_000});
+  }
+  const canvasBounds=await mobileChart.locator('canvas').first().boundingBox();
+  assert.ok(canvasBounds&&canvasBounds.width>100&&canvasBounds.height>100,'MOBILE_CHART_CANVAS_MISSING');
+  await mobile.getByRole('button',{name:'Сканер',exact:true}).first().click();
+  await mobile.getByRole('heading',{name:'Уровневые сетапы V5'}).waitFor();
+  await mobile.getByRole('textbox',{name:'Поиск монеты'}).fill('SOL');
+  assert.equal(await mobile.locator('tbody tr').count(),1,'MOBILE_SCANNER_FILTER');
+  await mobile.locator('tbody tr').first().click();
+  await mobile.getByRole('heading',{name:/SOL\\/USDT Perpetual/}).waitFor({state:'visible',timeout:30_000});
+  await mobile.locator('[aria-label="SOLUSDT professional candlestick chart"]')
+    .waitFor({state:'visible',timeout:30_000});
+  await mobile.close();
   console.log(JSON.stringify({
     test:'TERMINAL_BROWSER_SYNTHETIC_FIXTURE',result:'PASS',
     chartTF:['1m','15m'],scannerRows:19,
-    backtest7Days:true,backtestErrorClearsOldMetrics:true,scanErrorShownForETH:true,recoveredSymbolErrorCleared:true,forwardPages5m:historic5m.length,
-    forwardPages15m:historic15m.length,
+    backtest7Days:true,backtest30Days:true,chartKeyboardPanZoomSaved:true,mobileTFAndScanner:true,backtestErrorClearsOldMetrics:true,scanErrorShownForETH:true,recoveredSymbolErrorCleared:true,forwardPages5m:historic5m.length,
+    forwardPages15m:historic15m.length,longForwardPages5m:long5m.length,longForwardPages15m:long15m.length,
     neverUsedRealBinance:true,noTradingOrders:true,
   }));
 }finally{await browser.close();}
