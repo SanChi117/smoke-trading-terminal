@@ -1,5 +1,13 @@
 # SMOKE Trading OS — Project Status
 
+## Operator screenshot checkpoint — 2026-10-14 20:45 local
+
+- Owner-provided browser screenshot confirms signed-in AppDeploy PILOT (earlier screenshot showed 'Выйти'), and a visible owner cloud-backup list entry dated 2026-10-14 20:45:39, with 0 closed trades. This is evidence of save/list UI success in the user's session, not a verified raw database transaction or cross-account authorization test.
+- Browser PAPER processed 5 symbols at ~20:45; BTCUSDT, ETHUSDT, SOLUSDT, LINKUSDT and SUIUSDT all FLAT, NO_V5_READY. The displayed reason is higher-timeframe EMA/structure conflict or unconfirmed context. 0 OPEN, 0 CLOSED, estimated net PnL 0 USDT. It is a V5 filtering decision, not a market-access or PAPER runtime error.
+- Pending next operator step: click 'Проверить копию' for this actual cloud backup; verify validated preview appears but DO NOT confirm replacement of the working local PAPER journal. Later separately test explicit restore using a disposable profile/copy and verify owner isolation. Not yet full cloud E2E PASS.
+- No entry strategy changes and no real orders. Previous hosted Binance USD-M HTTP 451 remains an independent server-side block, despite user-reported successful browser feed checks.
+
+---
 ## Latest checkpoint — 2026-10-14 (v44, local JSON backup browser E2E PASS, user feed report)
 
 **Overall: PARTIAL / NOT YET AUTONOMOUS.** The existing V5 strategy is active and unchanged; live Binance orders remain disabled.
