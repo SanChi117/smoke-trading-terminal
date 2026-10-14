@@ -1,0 +1,39 @@
+name: portable-v5-usdm-fixture-qa
+
+on:
+  push:
+    paths:
+      - 'core/paper/portable-v5-adapter.ts'
+      - 'core/paper/portable-paper-runtime.ts'
+      - 'core/market/binance-usdm-portable.ts'
+      - 'tests/portable-v5-binance-integration.test.mjs'
+      - '.github/workflows/portable-v5-usdm-fixture-qa.yml'
+  pull_request:
+    paths:
+      - 'core/paper/portable-v5-adapter.ts'
+      - 'core/paper/portable-paper-runtime.ts'
+      - 'core/market/binance-usdm-portable.ts'
+      - 'tests/portable-v5-binance-integration.test.mjs'
+      - '.github/workflows/portable-v5-usdm-fixture-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  v5-parity-closed-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+      - run: npm ci
+      - name: Test unchanged V5 strategy with closed USD-M fixture and PAPER runtime
+        run: node --experimental-strip-types --test tests/portable-v5-binance-integration.test.mjs
+      - name: Recheck portable core invariants
+        run: node --experimental-strip-types --test tests/portable-paper-runtime.test.mjs
+      - name: Typecheck independent public USD-M market transport and runtime
+        run: npx tsc --noEmit --skipLibCheck --target es2022 --module nodenext --moduleResolution nodenext --strict --allowImportingTsExtensions core/market/binance-usdm-portable.ts core/paper/portable-paper-runtime.ts
