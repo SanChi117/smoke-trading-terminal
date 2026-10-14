@@ -46,9 +46,7 @@ jobs:
         with:
           node-version: '22.13.0'
       - name: Install isolated server dependencies
-        run: npm install --prefix deployment/portable-paper --ignore-scripts --no-audit --no-fund
-      - name: Print public pg dependency lock for reproducible packaging
-        run: node -e 'const f=require("node:fs");console.log("SMOKE_PG_LOCKFILE="+JSON.stringify(f.readFileSync("deployment/portable-paper/package-lock.json","utf8")))'
+        run: npm ci --prefix deployment/portable-paper --ignore-scripts --no-audit --no-fund
       - name: Verify real PostgreSQL read-only server, fail-close, crash recovery
         run: node --experimental-strip-types --test deployment/portable-paper/tests/server.integration.mjs
       - name: Verify fail-closed Binance USD-M regional probe with fixtures
