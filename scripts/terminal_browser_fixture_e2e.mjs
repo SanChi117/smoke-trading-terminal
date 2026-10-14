@@ -125,10 +125,40 @@ try{
     for(let i=1;i<frames.length;i++)
       assert.ok(frames[i].start>frames[i-1].start,'NOT_FORWARD_PAGED');
   }
+  // Separate synthetic error phase: a previously successful backtest must NOT
+  // remain on screen if its next attempt cannot load full history.
+  await page.route('https://fapi.binance.com/fapi/v1/klines?*',async route=>{
+    const u=new URL(route.request().url());
+    if(u.searchParams.has('startTime')) {
+      await route.fulfill({status:451,contentType:'application/json',
+        body:JSON.stringify({code:-1,msg:'Mocked unavailable history'})});
+    }else await route.fallback();
+  });
+  await page.getByRole('button',{name:'Запустить'}).click();
+  await page.getByRole('alert').waitFor({state:'visible',timeout:40_000});
+  assert.equal(await page.getByText('Сделки',{exact:true}).count(),0,
+    'STALE_BACKTEST_METRICS_SURVIVED_FAILED_RERUN');
+
+  // One failed symbol in a rescanned market must be labeled DATA ERROR,
+  // not treated as a current READY/WATCH and not silently left as old data.
+  await page.route('https://fapi.binance.com/fapi/v1/klines?*',async route=>{
+    const u=new URL(route.request().url());
+    if(u.searchParams.get('symbol')==='ETHUSDT') {
+      await route.fulfill({status:451,contentType:'application/json',
+        body:JSON.stringify({code:-1,msg:'Mocked per-symbol exchange access error'})});
+    }else await route.fallback();
+  });
+  await page.getByRole('button',{name:'Сканер',exact:true}).first().click();
+  await page.getByRole('button',{name:'Сканировать все',exact:true}).first().click();
+  const eth=page.locator('tbody tr').filter({hasText:'ETHUSDT'});
+  await eth.getByText('DATA ERROR',{exact:true})
+    .waitFor({state:'visible',timeout:100_000});
+  assert.equal(await eth.getByText('PAPER READY',{exact:true}).count(),0,
+    'STALE_SCANNER_READY_SURVIVED_DATA_ERROR');
   console.log(JSON.stringify({
     test:'TERMINAL_BROWSER_SYNTHETIC_FIXTURE',result:'PASS',
     chartTF:['1m','15m'],scannerRows:19,
-    backtest7Days:true,forwardPages5m:historic5m.length,
+    backtest7Days:true,backtestErrorClearsOldMetrics:true,scanErrorShownForETH:true,forwardPages5m:historic5m.length,
     forwardPages15m:historic15m.length,
     neverUsedRealBinance:true,noTradingOrders:true,
   }));
