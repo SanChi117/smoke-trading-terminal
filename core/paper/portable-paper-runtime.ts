@@ -174,8 +174,15 @@ export function createPortablePaperRuntime(ports: PortablePaperPorts) {
         evidence = {errorCode: 'PAPER_QUOTE_UNAVAILABLE'};
       }
     }
+    // The observed market quote was captured AFTER the cycle began.
+    // Never evaluate a newly observed quote against a stale pre-fetch clock,
+    // which would incorrectly mark every network quote as coming from
+    // the future. Preserve the candle and quote freshness rules.
+    const assessedAt = ports.clock();
+    if (!Number.isSafeInteger(assessedAt) || assessedAt < now)
+      throw Error('PORTABLE_PAPER_CLOCK_REGRESSION');
     return commit(symbol, prior,
-      evaluatePilotPaperCycle(prior, cycle, evidence, now));
+      evaluatePilotPaperCycle(prior, cycle, evidence, assessedAt));
   }
 
   async function minutesOrError(
