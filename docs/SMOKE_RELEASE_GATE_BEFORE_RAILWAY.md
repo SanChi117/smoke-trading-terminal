@@ -1,7 +1,7 @@
 # SMOKE release gate before changing entry methodology and importing to Railway
 
 Status: NOT RELEASE-READY — 2026-10-14.
-Reference: AppDeploy published v41 (1791927320801); GitHub draft PR #88 carries additional tested pure-core changes. Published AppDeploy source and GitHub Next/Vinext remain divergent.
+Reference: AppDeploy published v42 (1791992968913); GitHub draft PR #88 contains additional inactive pure input validation and test probes. Published AppDeploy source and GitHub Next/Vinext remain divergent.
 
 ## Scope and invariant
 
@@ -21,12 +21,12 @@ Evidence must be tracked separately:
 | Capability | Evidence | Status |
 |---|---|---|
 | Local PAPER deterministic lifecycle, fees, stop-first, missing-minute HALT, duplicate guard | GitHub pure-core integration tests | CI PASS |
-| 15m independent open-PAPER minute monitoring and bounded 7-day pagination | AppDeploy v41 source + GitHub tests | DEPLOYED, E2E UNVERIFIED |
-| Mature position stops repeating entry-minute lookups | AppDeploy v41 source and GitHub cursor regression | DEPLOYED, CI PASS |
+| 15m independent open-PAPER minute monitoring and bounded 7-day pagination | AppDeploy v42 source + GitHub tests | DEPLOYED, E2E UNVERIFIED |
+| Mature position stops repeating entry-minute lookups | AppDeploy v42 source and GitHub cursor regression | DEPLOYED, CI PASS |
 | Cross-tab conflict detection and readback rollback | AppDeploy v38+ source, deterministic helper tests | DEPLOYED, manual E2E UNVERIFIED |
 | Local backup upload/preview/confirm | AppDeploy v36+ source | DEPLOYED, manual E2E UNVERIFIED |
 | User-isolated AppDeploy cloud copy API | AppDeploy v40 source | DEPLOYED, authenticated E2E UNVERIFIED |
-| Integrity of modeled gross/net PnL and bounded journal totals during backup import | GitHub PR pure-core tests after v41 | CI PASS, NOT YET DEPLOYED |
+| Integrity of modeled gross/net PnL and bounded journal totals during backup import | AppDeploy v42 source + GitHub pure-core tests | DEPLOYED, manual E2E UNVERIFIED |
 | Binance kline normalizer rejects malformed OHLCV, mixed instruments, wrong weekly/month boundaries | GitHub shared market-data normalizer + deterministic tests | GITHUB CODED, NOT APPDEPLOY-DEPLOYED |
 | Future module closed multi-timeframe gate rejects gapped, stale and partial candles | GitHub core/market/strategy-candles.ts (not wired into V5) | GITHUB CODED, NOT ACTIVE |
 | Binance USD-M direct browser access across symbols/TFs | Browser path exists | CURRENT REAL-MARKET E2E UNVERIFIED |
@@ -37,7 +37,7 @@ Evidence must be tracked separately:
 
 ## Prerequisites to start integrating the new entry logic
 
-- P0: Stabilize and publish remaining backup-integrity fixes; CI green and AppDeploy no new runtime errors.
+- P0: Backup-integrity fixes are PUBLISHED in AppDeploy v42; next verify real browser JSON import round-trip and inspect legacy snapshot compatibility.
 - P0: Verify actual browser USD-M feed with timestamp/freshness for 1w,1d,4h,15m,5m and invalid/network cases. Expose failures; do not create fake market observations.
 - P0: Exercise in-browser isolated mechanics test and manual export, corrupt import refusal, real backup round-trip in the authorized account (without synthetic live PAPER journal changes).
 - P0: Prove server-backed PAPER state/receipt consistency and automatic 1m reconciliation on a trusted host accessible to Binance. AppDeploy server HTTP 451 cannot be treated as an operational service.
@@ -86,3 +86,10 @@ A green CI check proves only the tested code on a commit. AppDeploy 'ready' only
   partial candles explicitly. Do not misinterpret partial market data as a feed error.
 - Both GitHub workflow statuses need to be checked against the latest exact SHA
   before claiming this row CI PASS. E2E on production stays UNVERIFIED.
+
+## Public external probe — 2026-10-14
+
+- GitHub Actions `appdeploy-public-probe` confirmed the published site's root URL responds 200 with an HTML shell.
+- Direct unauthenticated GET to the same web hostname under `/api/pilot/browser-backups` and `/api/pilot/paper` yielded **HTML fallback (200)**, not JSON. This is **not** an authenticated API test and does not prove that PAPER records leaked.
+- The frontend `api` transport is SDK-managed; the owner must test account-scoped backend routes by signing in through the real browser UI and verifying unauthorized access is rejected using a separate account. No private data or LIVE trade paths were accessed during the public probe.
+- The external probe is a narrow **site availability** PASS only. Do not promote it to PAPER-API auth E2E PASS.
