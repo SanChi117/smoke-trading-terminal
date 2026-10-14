@@ -25,6 +25,25 @@ const ONE_MIN=60_000;
 const SYMBOL=/^[A-Z0-9]{3,20}USDT$/;
 const CLOCK_DELAY=15_000;
 const MAX_V5_SIGNAL_AGE=600_000;
+const WEEKLY_ANCHOR=Date.UTC(1970,0,5); // Binance UTC Monday 00:00
+
+// Binance klines use inclusive endTime on the KLINE OPEN timestamp.
+// closeAt-1 would include an unfinished 1w/1d/4h candle at most 15m closes.
+// Bound each request to the end of that timeframe's last COMPLETED candle.
+export function latestClosedUsdMKlineEnd(
+  closeAt:number,
+  frame:StrategyFrame,
+):number {
+  if(!Number.isSafeInteger(closeAt)||closeAt<=0||
+      closeAt%900_000!==0)
+    throw Error('USD_M_INVALID_MTF_CLOSE_TIME');
+  const cfg=FRAMES.find(item=>item.frame===frame);
+  if(!cfg)throw Error('USD_M_INVALID_MTF_INTERVAL');
+  const offset=frame==='1w'?WEEKLY_ANCHOR:0;
+  const boundary=Math.floor((closeAt-offset)/cfg.duration)*
+    cfg.duration+offset;
+  return boundary-1;
+}
 
 function validSymbol(symbol:string):void{
   if(!SYMBOL.test(symbol))throw Error('USD_M_INVALID_SYMBOL');
@@ -85,7 +104,7 @@ export function createReadOnlyUsdMFeed(
     const values=await Promise.all(FRAMES.map(async spec=>{
       const args=new URLSearchParams({
         symbol,interval:spec.frame,limit:String(spec.limit),
-        endTime:String(closeAt-1),
+        endTime:String(latestClosedUsdMKlineEnd(closeAt,spec.frame)),
       });
       const rows=await readJson('/fapi/v1/klines?'+args);
       const parsed=parseRows(rows,spec.duration,closeAt);
