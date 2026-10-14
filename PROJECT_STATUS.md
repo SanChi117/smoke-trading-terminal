@@ -1,17 +1,17 @@
 # SMOKE Trading OS — Project Status
 
-## Latest checkpoint — 2026-10-14 (AppDeploy v43 + server HTTP 451 verified)
+## Latest checkpoint — 2026-10-14 (v44 deployed, desktop + mobile browser E2E passed)
 
-**Overall: PARTIAL / NOT RELEASE READY.** The current V5 strategy is unchanged; real Binance order execution is disabled.
+**Overall: PARTIAL / NOT YET AUTONOMOUS.** The existing V5 strategy is active and unchanged; live Binance orders remain disabled.
 
-- **AppDeploy published v43** (snapshot 1791994628835): ready, frontend/backend/network QA reported no errors. A separate PILOT market-data diagnostic now checks BTC, ETH, SOL, LINK and SUI USDT perpetuals on 1w/1d/4h/15m/5m, plus bid/ask, all read-only and without PAPER journal writes.
-- **Offline market evidence validation in GitHub**: core/market/pilot-feed-audit.ts has deterministic regression tests for closed contiguous candles, quote integrity, stale/partial evidence and cross-interval isolation. New V5 input logic and live trading are not activated.
-- **Cloud-server Binance blocker proven**: GitHub Actions binance-usdm-readonly-probe run 38596941787 on 2026-10-14 found 0/30 successful, 30/30 HTTP 451 on all tested public USD-M REST routes. Prior AppDeploy backend also returned HTTP 451. Neither tested cloud environment is verified as a suitable continuous Binance scanner. The actual user browser may differ; v43 UI check awaits a manual click.
-- **Published PAPER reliability** remains v42+ (signal retry on transient failure and financial consistency of JSON restore), now retained unchanged within v43. V42 snapshot 1791992968913 and v41 snapshot 1791927320801 remain rollback candidates.
-- **AppDeploy public-host probe** confirmed a 200 HTML shell. The host's /api/pilot/* GET routes returned SPA HTML fallback rather than backend JSON; no authenticated API access or ownership isolation was proven by that result.
-- **GitHub draft PR #88** contains code/tests/docs in branch fix/paper-minute-monitor-and-strategy-slot-20261013, including read-only diagnostics and external host probe. Verify CI status at the exact most recent head before merge.
-- **P0 still missing**: genuine user-browser USD-M feed checks, full PAPER READY→OPEN→CLOSE, authorized backup restore and cross-user isolation, chart/backtest/mobile QA, durable autonomous worker on an exchange-permitted host, source-runtime reconciliation.
-- **Release / Railway gate**: docs/SMOKE_RELEASE_GATE_BEFORE_RAILWAY.md. Before deploying a worker in Railway, verify lawful real-time Binance Futures data access in the precise candidate service region; do not substitute another exchange's candles without explicit method redesign.
+- **AppDeploy v44**, snapshot `1791995185936`: published and verified `ready` with no recorded frontend/backend/network QA errors. The PILOT read-only audit checks 5 symbols x 5 TF and bid/ask. v44 additionally rejects future-opening candle timestamps; source was read back after deployment. v43 remains a rollback version.
+- **Actual headless browser E2E PASSED**, GitHub Actions `pilot-feed-browser-e2e` run `38598297290`: desktop 1280x900 and mobile 390x844 each executed the built-in **17/17 synthetic PAPER mechanical checks PASS**, rendered **all 30 market data audit results**, and verified `localStorage` PAPER journal remained byte-for-byte unchanged. These are real browser UI interactions, not merely component unit tests.
+- **External market access is BLOCKED on the GitHub runner**: the browser run produced 0 market PASS / 30 ERROR; separate real REST probe `38596941787` previously confirmed all 30 public Binance Futures requests returned **HTTP 451**. AppDeploy's older backend also reported HTTP 451. A different compliant cloud region or permitted data source must be tested before server-side autonomous PAPER can be declared operational.
+- **User's actual browser Binance data access remains UNVERIFIED.** Its network/region may differ; v44 offers the on-screen button `Проверить реальные данные (5 монет)`.
+- **Authenticated cloud-backup round-trip and cross-account authorization remain UNVERIFIED.** Plain public-host `/api/pilot` requests return HTML SPA fallback rather than backend API responses, so this is not proof of a vulnerability or auth success.
+- **Genuine V5 READY → PAPER OPEN → CLOSED on live market data remains UNVERIFIED.** Synthetic 17/17 PASS does not meet this gate. Server-side hourly worker remains paused. Chart pan/zoom/backtest and long-run resilience have not yet had full E2E certification.
+- **GitHub draft PR #88** holds the pure-core fixes, market feed validators, external probes, and release documentation. Both `terminal-ci` and `level-flow-ci` passed on the latest code SHA `56d5522b01f0aa98b2875c34a3d97b5e324cf434`. Subsequent documentation edits require CI checks at the newer exact SHA before merging.
+- **Railway remains intentionally deferred** until the owner's new entry mechanism has been installed and separately PAPER-tested, exact AppDeploy/GitHub source divergence reconciled, and compliant server access to Binance market data verified in the intended Railway environment. Do not use the obsolete HYBRID v2 installer.
 
 ---
 
