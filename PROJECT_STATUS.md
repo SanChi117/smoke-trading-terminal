@@ -1,5 +1,23 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-14 — Cloud backup owner isolation route contract (read-only production snapshot)
+
+**Completed safe work:**
+- Rechecked PR #88 `DRAFT`, applied AppDeploy `v47` (`1792003179327`) `READY` with zero reported frontend/backend errors. Latest pre-cycle branch HEAD was `debd1fb91a922e7d1aa1822464f70010714fe740`. No new published AppDeploy release.
+- Read AppDeploy auth SDK docs: `AuthUser.userId` is a stable UUID; platform `requireAuth()` validates bearer tokens and sets `ctx.user`. Source `backend/browser-paper-backups.ts` uses this middleware on all three cloud routes and names DB tables by UUID-derived owner prefix.
+- Captured exact **unchanged published route code** as a non-executable GitHub reference snapshot `docs/reference/appdeploy-v47-browser-paper-backups.ts.txt` (GitHub commit `8403d6f36e51e5a53e6f9952f030f465145fe6fd`). This is **NOT** a replacement backend, nor Next/Vinext/AppDeploy reconciliation.
+- Created `scripts/cloud_backup_route_contract_qa.mjs` (commit `6239b7f98936228c641c048078604ac2608fecc6`) and its dedicated GitHub workflow `.github/workflows/cloud-backup-route-contract-qa.yml` (commit `fec529aa9b2b3d1e1f966967b448592f3bf8a003`).
+- **Actions run `38624474529` SUCCESS**, job `116060011909`, testing the exact frozen deployed route with a simulated SDK and in-memory DB. Log reported `APPDEPLOY_V47_CLOUD_ROUTE_CONTRACT PASS`: middleware present on 3 endpoints, two mocked UUID identities own isolated list/get/write data, foreign backup IDs return 404, valid save/readback exact, forged `executionAuthorized` / realized PnL rejected, malformed payload 400, size limit 413, write readback error 503, quota 429, no real orders.
+- CI on `fec529aa...`: `terminal-ci` SUCCESS `38624485937`, `level-flow-ci` SUCCESS `38624485567`. Independent long `level-flow-logic-audit` `38624485692` was still in progress when recorded; do not claim its PASS without rechecking.
+
+**Evidence boundary and next gate:**
+- The route under test was the original deployed source as a reference; its platform SDK auth and database were **mocked**, not real AppDeploy authenticated services. Thus **cross-account authenticated E2E is STILL UNVERIFIED**; code/route-level owner-isolation contracts are PASS. User's authenticated local browser backup list/preview from the earlier handoff is not a second-user test.
+- No production deploy, strategy activation, owner login, privileged credentials, real cloud mutation, owner PAPER journal restore, live order API or Railway import occurred. Published site remains v47 and PR #88 DRAFT.
+- NEXT: obtain permission and two independent disposable AppDeploy authenticated identities/profiles; in a disposable user account save/list/inspect/restore one test-only ledger, then request the saved ID from a second independent identity and prove 404 using SDK bearer auth; compare JSON readback and post-reload, with zero changes to owner profile. Never fake this with the unit route test. Separate genuine V5 READY → PAPER OPEN → CLOSE and legal 24/7 market-data host remain open.
+
+---
+
+
 ## 2026-10-14 — Continuation cycle: published v47 local PAPER restore integrity E2E
 
 - **Test code commit:** `7b0d68c533a2654e6163e1d02859dfacfb392733`; only `scripts/paper_backup_browser_e2e.mjs` changed. No AppDeploy production edits or deployment, live site remains `v47` snapshot `1792003179327`.
