@@ -91,7 +91,17 @@ export function createReadOnlyUsdMFeed(
       const parsed=parseRows(rows,spec.duration,closeAt);
       return [spec.frame,parsed] as const;
     }));
-    return Object.fromEntries(values) as StrategyCandleBundle;
+    const frames=new Map<StrategyFrame,StrategyCandle[]>(values);
+    // Construct the required five-frame type explicitly: unknown/optional
+    // frames cannot silently become a valid V5 bundle.
+    const weekly=frames.get('1w'),daily=frames.get('1d'),
+      fourHour=frames.get('4h'),fifteen=frames.get('15m'),
+      five=frames.get('5m');
+    if(!weekly||!daily||!fourHour||!fifteen||!five)
+      throw Error('USD_M_INCOMPLETE_V5_FRAMES');
+    return {
+      '1w':weekly,'1d':daily,'4h':fourHour,'15m':fifteen,'5m':five,
+    };
   }
 
   const market:PortablePaperMarket=Object.freeze({
