@@ -29,7 +29,7 @@ Evidence must be tracked separately:
 | Integrity of modeled gross/net PnL and bounded journal totals during backup import | AppDeploy v42 source + GitHub pure-core tests | DEPLOYED, manual E2E UNVERIFIED |
 | Binance kline normalizer rejects malformed OHLCV, mixed instruments, wrong weekly/month boundaries | GitHub shared market-data normalizer + deterministic tests | GITHUB CODED, NOT APPDEPLOY-DEPLOYED |
 | Future module closed multi-timeframe gate rejects gapped, stale and partial candles | GitHub core/market/strategy-candles.ts (not wired into V5) | GITHUB CODED, NOT ACTIVE |
-| Binance USD-M direct browser access across symbols/TFs | Browser path exists | CURRENT REAL-MARKET E2E UNVERIFIED |
+| Binance USD-M direct browser access across symbols/TFs | AppDeploy v43 read-only 30-check UI | DEPLOYED; USER-BROWSER E2E UNVERIFIED |
 | Server-side autonomous PAPER and scheduler | AppDeploy server config explicitly paused due to HTTP 451; browser manual workflow | BLOCKED |
 | 24/7 durable journal with transactional backend / recovery | Not implemented or exercised for the present browser research engine | BLOCKED |
 | Portable Railway importer and full updated UI export | AppDeploy-vs-GitHub reconciliation incomplete | BLOCKED |
@@ -93,3 +93,13 @@ A green CI check proves only the tested code on a commit. AppDeploy 'ready' only
 - Direct unauthenticated GET to the same web hostname under `/api/pilot/browser-backups` and `/api/pilot/paper` yielded **HTML fallback (200)**, not JSON. This is **not** an authenticated API test and does not prove that PAPER records leaked.
 - The frontend `api` transport is SDK-managed; the owner must test account-scoped backend routes by signing in through the real browser UI and verifying unauthorized access is rejected using a separate account. No private data or LIVE trade paths were accessed during the public probe.
 - The external probe is a narrow **site availability** PASS only. Do not promote it to PAPER-API auth E2E PASS.
+
+## 2026-10-14 — v43 market feed gate and hosted connectivity evidence
+
+- AppDeploy v43 snapshot 1791994628835 published with read-only PilotMarketFeedAudit in PILOT. It sends at most 30 public GET requests after a deliberate button click, checks 5 symbols x 5 TF plus a bid/ask ticker for each, and never reads or mutates PAPER records. AppDeploy deployment ready; frontend/backend/network QA arrays empty. Core validation logic and offline tests are in core/market/pilot-feed-audit.ts.
+- GitHub dedicated binance-usdm-readonly-probe job 38596941787 ran on an external GitHub-hosted runner (2026-10-14 16:18 UTC). **All 30 of 30 Binance USD-M REST GET requests returned HTTP 451**. This blocks the tested runner, not necessarily other provider regions or the user's browser.
+- The known AppDeploy backend reported Binance USD-M HTTP 451 previously. Two cloud environments now have explicit blocked evidence; neither can be considered a suitable always-on scanner host without a compliant, provider-supported remedy.
+- A different venue's candles are NOT a transparent substitute for Binance USD-M perpetual futures candles, volume or liquidity. Do not silently mix venues or report simulated signals as Binance-backed READY.
+- Railway admission test: deploy an independent read-only probe in the exact candidate service region and network; verify required 1w/1d/4h/15m/5m/1m candles, depth/quotes and rate-limit behavior through permitted endpoints before migrating any journal or enabling 24/7 PAPER worker. Region must comply with exchange access requirements. HTTP 403/451/429, CORS or unverified OHLCV freshness blocks release.
+- The built-in v43 browser diagnostic may work even when cloud egress fails, but requires an actual operator click to establish results. Until then, BROWSER LIVE FEED remains UNVERIFIED; a green AppDeploy build cannot replace the check.
+- GitHub public-host appdeploy-public-probe tested only the frontend shell; API paths on the SPA host return an HTML fallback. Authenticated SDK API access still awaits an account-based E2E test.
