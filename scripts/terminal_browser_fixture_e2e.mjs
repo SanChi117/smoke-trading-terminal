@@ -203,7 +203,7 @@ try{
   const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   await mobile.route('https://fapi.binance.com/**',binanceFixture);
   await mobile.goto(BASE,{waitUntil:'domcontentloaded',timeout:30_000});
-  await mobile.getByRole('heading',{name:/BTC\\/USDT Perpetual/})
+  await mobile.getByRole('heading',{name:/BTC\/USDT Perpetual/})
     .waitFor({state:'visible',timeout:60_000});
   const mobileChart=mobile.locator('[aria-label="BTCUSDT professional candlestick chart"]');
   await mobileChart.waitFor({state:'visible',timeout:30_000});
@@ -219,7 +219,7 @@ try{
   await mobile.getByRole('textbox',{name:'Поиск монеты'}).fill('SOL');
   assert.equal(await mobile.locator('tbody tr').count(),1,'MOBILE_SCANNER_FILTER');
   await mobile.locator('tbody tr').first().click();
-  await mobile.getByRole('heading',{name:/SOL\\/USDT Perpetual/}).waitFor({state:'visible',timeout:30_000});
+  await mobile.getByRole('heading',{name:/SOL\/USDT Perpetual/}).waitFor({state:'visible',timeout:30_000});
   await mobile.locator('[aria-label="SOLUSDT professional candlestick chart"]')
     .waitFor({state:'visible',timeout:30_000});
   await mobile.close();
