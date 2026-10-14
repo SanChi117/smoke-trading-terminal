@@ -58,7 +58,7 @@ node --experimental-strip-types deployment/portable-paper/market-egress-probe.mj
 - [x] Портативный контракт исполнения с DB CAS и тестовыми READY→OPEN→CLOSE/STOP/HALT.
 - [x] Read-only автономный Node API, подтверждённая перезагрузка и повторное чтение из реальной тестовой PostgreSQL.
 - [x] Подготовлена только **средство** проверки Binance USD-M egress; тесты на synthetic fixture.
-- [ ] Подтверждён Docker build на финальном коммите (проверять CI).
+- [x] Docker build и **запуск** готового образа проверены на тестовом PostgreSQL 16: Actions `portable-paper-standalone-http-qa` run `38631878587`, job `116085281538` SUCCESS; вывод `PORTABLE_PAPER_CONTAINER_SMOKE=PASS` (health 200, /status без token 401 и с token 200, PAPER_ONLY и scanDisabled). Это ephemeral CI, а не реальный Railway/24×7 deployment.
 - [ ] Создан и испытан worker scheduler с проверенным публичным USD-M feed, минутным сопровождением открытых PAPER позиций и 15m V5; запрещать ордера.
 - [ ] Подтверждены Binance USD-M HTTP 200 в выбранной разрешённой реальной облачной среде и непрерывность 5 TF + 1m.
 - [ ] Надёжная схема восстановления Postgres `pg_dump` → `pg_restore`, ежедневные backup и alarms на пропуски/задержки.
