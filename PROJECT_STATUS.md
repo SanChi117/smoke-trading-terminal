@@ -1,5 +1,42 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-14 — PORTABILITY P3: actual unchanged V5 wired into portable read-only USD-M adapter, PAPER one-shot runner
+
+**Scope:** Owner directed continuation of migration. GitHub branch `fix/paper-minute-monitor-and-strategy-slot-20261013`, PR #88 OPEN/DRAFT. No AppDeploy deploy; v47 `1792003179327` remains `ready` / reported no frontend or backend errors. No real orders, no owner records, no secrets, no host-region workaround. Real Binance Futures from GitHub/AppDeploy previously HTTP 451.
+
+### Actual implementation
+- `33caf69bfc98857972a190ee54ab4662656ec9a5`: `core/paper/portable-v5-adapter.ts` calls the exact original `analyzeLevelFlow` in `app/lib/level/analysis-qfvg-fs15.ts`; no V5 source/rules changed. Fixed `V5_UNMODIFIED` ID; strict 1w/1d/4h/15m/5m closed-contiguous-as-of input; V5 required minimum 24/70/220/120/180 bars; symbol/time/risk validation before READY mapping.
+- `afb87eed52047a23c21425b6f1e9cf91b362a736`: `core/market/binance-usdm-portable.ts` implements official public USD-M GET bundle (hardcoded `https://fapi.binance.com`), correct `endTime=15mCloseAt-1`, no accepted current partial candle/gap; BTC-style bookTicker with observed snapshot time; 1m forward pages limited to 900 bars and 7 days; reuses prior `planPaperMinuteWindow`, `verifyClosedMinutePage`, `auditEntryMinute` to HALT ambiguous entry-minute stop/TP contacts. No broker or credential path.
+- `fed6ca79f30c2f1f8dc430a3a27d962819804c59`: corrected real quote capture timestamp regression: earlier portable runtime evaluated post-fetch quote against pre-fetch frozen now. New post-fetch clock used for `evaluatePilotPaperCycle`, with regression guard; unchanged V5 entry policy and risk.
+- `0cb2fc17ec75a98f67b2d99e34419b41b2fc20a0`: Binance data gate uses 10-minute existing signal-life ceiling (not overly strict 15 seconds for a 15m signal); quote read still bound to 15 sec.
+- `da695a6eb79ef8e0fe44ec6968baa3d426fb85b3`: pass type-safe **copied** validated candle arrays to original unchanged V5 analyzer.
+- `f6ad86e90ff78446e773f1823ae774164d3e7f50`: replaced broad TypeScript cast of `Object.fromEntries` with fully checked 5-frame object after strict CI found TS2352.
+- `5099bd7408cb8ea1825f6a5822b0c98802fa097a`: new `core/paper/portable-cycle-runner.ts` runs independent 1m monitor first, then fresh 15m event only if less than 10m old, bounded five-symbol per-pass and anti-overlap; DB CAS remains source of truth.
+- `a4c4b428dfdfc494cc8d40b1a6969f07ed8ea291`: `deployment/portable-paper/worker-once.mjs` wires public live data feed, unchanged V5, Postgres store, one-shot runner; requires explicit `SMOKE_PAPER_WORKER_ENABLED=1` **AND** `SMOKE_PAPER_MARKET_EGRESS_CONFIRMED=1`, then fresh Binance read-only egress probe before any DB access. OFF by default. This is NOT an always-on scheduler or platform deployment. No live order routes.
+- `d02ad7f1f7697ee89b002228e49e5185e800655f`: six orchestration tests: no duplicate 15m, strategy retry without lost watermark, stale signal never opened, minute STOP-first with prior open, DB read failure prevents strategy, overlapping tick guard. Initial fixture accidentally used a signal older than V5's 10m validity and was rightly rejected; corrected only test sample timestamp at `e5c9966cf84c4a4c901ca00f378a364825c646ff`.
+- `1f29d0ea7f33aa21977b8dbca39020e54b419dd9`: eight 5TF/paging/quote/adversarial tests, including **actual unchanged V5 function** with deterministic closed-candle Binance fixture, simulated READY only through explicitly injected test analyzer, and minute STOP/TP entry ambiguity HALT. No real Binance requests or fake 'market E2E'.
+- `a009996ec76670d2200020cd2b4e8323777ee078`: new `portable-v5-usdm-fixture-qa` workflow; `ec155b9f8056caf76d76477f2bc364d808e936be` adds runner tests; `f5c79d488235412b2a9458b0a0e7d623ba202a19` packages needed V5 pure sources and disabled worker into Docker. Default image still starts read-only HTTP control plane; not worker.
+- `bad0058668d11ec9affd4c6a92aedcb4951f2ce0`: container CI starts worker with no flags in **network-disabled** container and demands failure exit 2; `portable-paper-standalone-http-qa` run **`38634471134` SUCCESS** job `116093991257`, log `PORTABLE_PAPER_WORKER_DEFAULT_OFF=PASS`; Docker build and read-only HTTP server smoke `PORTABLE_PAPER_CONTAINER_SMOKE=PASS` also passed.
+- `7172813fb402d0b9e1b78f9cc5fd5d61615e5f1c`: adversarial report fix: a handled `STRATEGY_DATA_UNAVAILABLE` / missing quote / minutes HALT was previously reported as operational `ok:true`. Now reports `degraded` and `ok:false` even if fail-closed PAPER transition is non-throwing; healthy `NO_V5_READY` remains healthy.
+- `25e3ac2dac3cbbc301a993648a3f17f2b4c8c83c`: regression test requires degraded state for missing V5 evidence.
+- `f8cbe9bcb557a54f24451e85d230666017f87f5a`: comprehensive `docs/PORTABLE_V5_BINANCE_WIRING_2026-10-14.md`.
+
+### Confirmed evidence (exact SHA, synthetic-vs-real distinction)
+- **`portable-v5-usdm-fixture-qa` run `38634325250` SUCCESS**, job `116093489726`: **8/8 USD-M/V5 integration fixtures, 6/6 1m/15m runner tests, 11/11 preexisting runtime tests**, strict scoped TypeScript passed. Actual original V5 source executed with artificial OHLCV. Simulated fake READY used only in separately injected analyzer test to force PAPER OPEN and time-path proof.
+- Latest `25e3ac2d...`: `portable-v5-usdm-fixture-qa` **SUCCESS** `38634602380`, `portable-paper-runtime-qa` SUCCESS `38634602357`, `terminal-ci` SUCCESS `38634602359`, `level-flow-ci` SUCCESS `38634602397`, `portable-paper-standalone-http-qa` SUCCESS `38634602457`. Long `level-flow-logic-audit` run `38634602396` was still in progress and `portable-paper-postgres-qa` run `38634602365` was still in progress at check; do NOT assert their success without rechecking.
+- Source and test code were committed only to GitHub branch. No production deployment and no real owner journal writes.
+
+### Refutation / remaining release blocks
+- Read-only Binance adapter code points to real official USD-M endpoints, **but all code/data integration tests used mocked response fixtures**, except earlier separate failed live-server egress 451. Thus NO real-world V5 READY→PAPER OPEN→1m EXIT on a legally accessible server was observed. HTTP 451 could block worker if launched on previously checked infrastructure; worker preflight fails closed.
+- The separate worker performs **one** pass on explicit opt-in, not a perpetual 24×7 scan, does not run by Docker default or browser, and has not executed against real Binance or owner PostgreSQL. The production HTTP server still correctly reports `scanEnabled:false`; DO NOT claim full autonomous system.
+- No legal Railway region/account deployment, 24h endurance/restarts, persistent DB backup/restore drill, migration of owner browser data, or reconciliation of GitHub Next/Vinext vs AppDeploy Vite UI.
+- New strategy input not yet delivered; no changes to V5 methods or real trade permissions.
+
+**Next P0:** probe specific permitted target-host region using credentials-free official Binance public USD-M API, verify 5TF closed OHLCV and 1m continuity from that **same** region. Then run one controlled PAPER-only pass against a disposable Postgres namespace and evidence-audit results before considering scheduled worker and cross-restart backup drills.
+
+---
+
+
 ## 2026-10-14 — PORTABILITY P2: standalone PAPER read-only server, locked Docker image, USD-M egress preflight
 
 **Owner direction:** prepare migration away from temporary AppDeploy, keep V5 untouched and absolutely no real orders; skip optional AppDeploy two-account backup E2E. Never replace the deployed Vite v47 by this Next/Vinext GitHub tree. PR #88 remains DRAFT.
