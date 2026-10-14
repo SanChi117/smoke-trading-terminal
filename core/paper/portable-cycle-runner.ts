@@ -41,14 +41,17 @@ export function createPortableCycleRunner(
       const closeAt=Math.floor(at/BAR_15)*BAR_15;
       // Do not replay a previous 15m signal after its validity expires.
       const due=at-closeAt<MAX_SIGNAL_AGE;
-      let errors=0;
+      let errors=0,degraded=0;
       const outcomes=[];
       for(const symbol of symbols){
         let minute:'SKIPPED'|'CHANGED'|'ERROR'='SKIPPED';
         let cycle:'SKIPPED'|'CHANGED'|'ERROR'='SKIPPED';
         let reason:string|null=null;
+        let lastState:Awaited<ReturnType<typeof runtime.load>>|null=null;
         try{
-          minute=(await runtime.onMinute(symbol)).outcome;
+          const observed=await runtime.onMinute(symbol);
+          minute=observed.outcome;
+          lastState=observed.state;
         }catch(err){
           minute='ERROR'; errors++;
           reason=err instanceof Error?err.message:'PAPER_UNKNOWN_ERROR';
@@ -57,19 +60,36 @@ export function createPortableCycleRunner(
         // on this symbol. Explicitly preserve existing position.
         if(minute!=='ERROR'&&due){
           try{
-            cycle=(await runtime.onClosed15m(symbol,closeAt)).outcome;
+            const observed=await runtime.onClosed15m(symbol,closeAt);
+            cycle=observed.outcome;
+            lastState=observed.state;
           }catch(err){
             cycle='ERROR';errors++;
             reason=err instanceof Error?err.message:'PAPER_UNKNOWN_ERROR';
           }
         }
-        outcomes.push({symbol,minute,cycle,error:reason});
+        // A processed-but-unavailable market/strategy input is NOT a healthy
+        // scan. Keep NO_V5_READY as a genuine healthy strategy decision.
+        const unhealthy=new Set([
+          'STRATEGY_DATA_UNAVAILABLE','PAPER_QUOTE_UNAVAILABLE',
+          'POSITION_DATA_UNAVAILABLE','UNRESOLVED_POSITION',
+          'STALE_QUOTE','STALE_OR_FUTURE_SIGNAL',
+        ]);
+        const isDegraded=!!lastState&&(
+          lastState.haltReason!==null||
+          unhealthy.has(lastState.lastEntryAttempt??'')
+        );
+        if(isDegraded)degraded++;
+        outcomes.push({
+          symbol,minute,cycle,error:reason,degraded:isDegraded,
+        });
       }
       return Object.freeze({
         mode:'PAPER_ONLY' as const,
         strategyId:'V5_UNMODIFIED' as const,
         executionAuthorized:false as const,
-        closed15m:closeAt,outcomes,errors,ok:errors===0,
+        closed15m:closeAt,outcomes,errors,degraded,
+        ok:errors===0&&degraded===0,
       });
     }finally{
       running=false;
