@@ -64,6 +64,9 @@ export function validateRecentBinanceKlines(
         takerBuy < 0 || takerBuy > volume + Math.max(1e-8,volume*1e-8)) {
       throw Error('PILOT_FEED_INVALID_CANDLE');
     }
+    // A forming candle may be present; a candle that has not even opened
+    // yet is future data and must never count as a valid market observation.
+    if (time > receivedAt) throw Error('PILOT_FEED_FUTURE_CANDLE');
     rows.push({time,closeTime,close});
   }
   for (let i=1; i<rows.length;i++) {
