@@ -141,9 +141,10 @@ try{
 
   // One failed symbol in a rescanned market must be labeled DATA ERROR,
   // not treated as a current READY/WATCH and not silently left as old data.
+  let denyEth=true;
   await page.route('https://fapi.binance.com/fapi/v1/klines?*',async route=>{
     const u=new URL(route.request().url());
-    if(u.searchParams.get('symbol')==='ETHUSDT') {
+    if(denyEth && u.searchParams.get('symbol')==='ETHUSDT') {
       await route.fulfill({status:451,contentType:'application/json',
         body:JSON.stringify({code:-1,msg:'Mocked per-symbol exchange access error'})});
     }else await route.fallback();
@@ -155,10 +156,22 @@ try{
     .waitFor({state:'visible',timeout:100_000});
   assert.equal(await eth.getByText('PAPER READY',{exact:true}).count(),0,
     'STALE_SCANNER_READY_SURVIVED_DATA_ERROR');
+  denyEth=false;
+  await eth.click();
+  await page.getByRole('heading',{name:/ETH\/USDT Perpetual/})
+    .waitFor({state:'visible',timeout:20_000});
+  await page.getByRole('button',{name:'Сканер',exact:true}).first().click();
+  await page.locator('tbody tr').filter({hasText:'ETHUSDT'})
+    .getByText('DATA ERROR',{exact:true})
+    .waitFor({state:'hidden',timeout:50_000});
+  const recoveredStatus=await page.locator('tbody tr')
+    .filter({hasText:'ETHUSDT'}).locator('td').last().textContent();
+  assert.ok(recoveredStatus&&recoveredStatus.trim()!=='НЕ ПРОВЕРЕН',
+    'RECOVERED_ETH_STILL_UNCHECKED');
   console.log(JSON.stringify({
     test:'TERMINAL_BROWSER_SYNTHETIC_FIXTURE',result:'PASS',
     chartTF:['1m','15m'],scannerRows:19,
-    backtest7Days:true,backtestErrorClearsOldMetrics:true,scanErrorShownForETH:true,forwardPages5m:historic5m.length,
+    backtest7Days:true,backtestErrorClearsOldMetrics:true,scanErrorShownForETH:true,recoveredSymbolErrorCleared:true,forwardPages5m:historic5m.length,
     forwardPages15m:historic15m.length,
     neverUsedRealBinance:true,noTradingOrders:true,
   }));
