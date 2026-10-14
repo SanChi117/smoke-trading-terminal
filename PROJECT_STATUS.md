@@ -16,6 +16,16 @@
 - No entry strategy changes and no real orders. Previous hosted Binance USD-M HTTP 451 remains an independent server-side block, despite user-reported successful browser feed checks.
 
 ---
+## Technical checkpoint — 2026-10-14: v45–v46, history pagination and stale-data safety
+
+- **AppDeploy v45** (`1792002630820`) published and source-readback confirmed. Fixed `fetchKlinesRange` truncating long Binance Futures history at 1500 candles when using startTime/endTime; now a fail-closed, contiguous, closed-candle forward page loader is shared with the GitHub branch. A 65-day 5m lookback is no longer silently processed as a short 1500-bar sample.
+- **GitHub deterministic history tests** (terminal-ci + level-flow-ci + level-flow-logic-audit) all PASSED on commit `47969affccf3...` using a mock that matches Binance's earliest-first startTime pagination.
+- **Published browser E2E with synthetic fixture** run `38616082470` PASSED on v45: chart 1m and 15m switches, scanner shows 19 symbols and search/sort works, a 7-day backtest completes after 9 sequential 5m pages and 3 sequential 15m pages. This is an isolated mock-market test, not proof of Binance access or profitable trades.
+- **AppDeploy v46** (`1792002952582`) published ready, source-readback confirmed, frontend/backend QA error arrays empty. Scanner clears stale READY/WATCH when a symbol's data fetch fails and labels that symbol DATA ERROR. Backtest clears previous result at start and on failure so old metrics cannot masquerade as a new test. Selected-symbol analysis/graph are cleared on genuine data failure rather than offering stale plans.
+- **v46 error-path browser E2E** is automated by `scripts/terminal_browser_fixture_e2e.mjs` (dedicated Github workflow). Check run `38616664436` for PASS/FAIL on exact SHA before certifying this error behavior.
+- **Unchanged**: active V5 strategy, paper journal data, real orders disabled. GitHub Next/Vinext UI still diverges from deployed AppDeploy Vite; surgical updates only, PR #88 remains draft.
+- **Still P0**: authorized cloud restore and cross-account isolation; real READY→PAPER OPEN→CLOSE; legal Binance server access (GitHub/AppDeploy HTTP 451); endurance 24/7 and coherent Railway release.
+ 
 ## Latest checkpoint — 2026-10-14 (v44, local JSON backup browser E2E PASS, user feed report)
 
 **Overall: PARTIAL / NOT YET AUTONOMOUS.** The existing V5 strategy is active and unchanged; live Binance orders remain disabled.
