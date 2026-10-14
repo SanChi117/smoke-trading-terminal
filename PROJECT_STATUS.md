@@ -1,5 +1,33 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-14 — Continuation cycle: v47 published-browser resilience QA
+
+**Scope:** Reuse current AppDeploy v47, no production code deployment, no V5 edits, no real orders, no owner journal/backup mutations. Previous handoff read in full. The older sections below are historical and not an assertion of current release readiness.
+
+### Actual source/version audit
+- GitHub draft PR #88 remained OPEN/DRAFT; handoff HEAD was followed by docs commit `dc979588ea184bb6949652bb41604a6823c81f59`, then the E2E test expansion. Latest test-only source commit at this checkpoint: `cc84352bae43ccd6c8dc421d3d3f22812252cd4f`.
+- AppDeploy `smoke-trading-terminal-0kl792`: `ready`, unchanged v47 snapshot `1792003179327`. Source read directly from the published snapshot: `app/components/TerminalV6.tsx`, `app/components/ProfessionalChart.tsx`, `app/lib/binance-level-client.ts`, `app/lib/kline-range-core.ts`, `app/components/PilotBrowserPaper.tsx`, `backend/browser-paper-backups.ts`. AppDeploy QA reported zero frontend/backend errors, but this is not evidence of live runtime continuity.
+- On handoff commit `dc979588...`: `terminal-ci` SUCCESS run `38621611147`, `level-flow-ci` SUCCESS `38621610854`, `level-flow-logic-audit` SUCCESS `38621610843`.
+- On current E2E script commit `cc84352...`: `terminal-ci` SUCCESS `38622637760`, `level-flow-ci` SUCCESS `38622637730`; `level-flow-logic-audit` run `38622637556` was still **in_progress** at reporting time; check exact run before promoting this result.
+
+### Published-site automated browser tests (isolated fixtures)
+- **SUCCESS**, GitHub Actions `terminal-browser-fixture-e2e` run `38622629321`, job `116053717724`, executed Chromium against the unchanged public v47 with wholly mocked public Binance responses in a disposable browser profile.
+- Desktop: real chart canvas + 1m/15m switch; chart keyboard pan and zoom updated saved per-symbol viewport; scanner 19 rows, sorting/search; 7-day backtest: **9 historical 5m pages and 3 15m pages**; 30-day backtest: **13 historical 5m pages and 5 15m pages**, all increasing start timestamps. These counts are actual test-log output, not guaranteed exact real Binance request counts.
+- Failure/recovery: mocked historical HTTP 451 hides stale backtest metrics; ETH-specific HTTP 451 shows DATA ERROR, successful rescan clears the stale error. No synthetic OPEN added to PAPER journal.
+- Mobile Chromium at 390x844: chart canvas visible, switches 1m/5m/15m/4h/1d, scanner search SOL and navigation to SOL chart. Browser fixture never used real Binance, live credentials, trade submission, or the owner's existing browser storage.
+- First test-only commit `76fcf054...` accidentally included over-escaped regular expressions and predictably failed `terminal-browser-fixture-e2e` run `38622552971` and `level-flow-ci` run `38622565399`. This was a **test syntax failure**, not a reproduced product defect. Fixed in `cc84352...`, re-ran both successfully. No production rollback or redeploy necessary.
+
+### Invariants and open release gates
+- **PASS at synthetic browser level only:** previous v45–v47 scanner/history recovery plus new mobile and viewport keyboard stress.
+- **NOT TESTED:** production real-market mobile UX, actual browser touch gesture/pinch or hours-long stability, actual V5 trade history click-through when trades exist, new authenticated cloud restore and cross-account isolation, live V5 READY → PAPER OPEN → minute STOP/TARGET/HALT → persisted actual PnL, and always-on outside a browser.
+- **BLOCKED:** hosted Binance USD-M access previously HTTP 451 from AppDeploy/GitHub; new E2E replaces only public market requests with fixtures and does not resolve this. Railway cannot be assumed to work without a read-only legal egress probe in the chosen service/region.
+- Backend `browser-paper-backups.ts` has requireAuth and per-user DB table names, but this source inspection alone does **not** prove cross-user isolation; do not mutate owner data or call this E2E PASS.
+- Existing GitHub Next/Vinext and deployed AppDeploy Vite remain distinct. This change was **GitHub test-only**; site remains `v47`.
+- NEXT: in a disposable separate authorized AppDeploy test account perform cloud save/list/inspect/restore/readback and cross-user deny; independent genuine market PAPER lifecycle still awaits natural V5 READY and a legal supported external host. Continue runtime UX investigation only on observed bugs. Keep PR #88 DRAFT.
+
+---
+
+
 ## Cloud backup preview UI issue — operator screenshot 2026-10-14
 
 - Operator screenshot after selecting `Проверить копию` displays server success message `Копия AppDeploy проверена. Для замены локального журнала потребуется отдельное подтверждение.` This supports successful signed-in backup retrieval and client-side validation.
