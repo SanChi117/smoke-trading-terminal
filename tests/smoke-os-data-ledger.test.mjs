@@ -152,3 +152,68 @@ test("future strategies receive only closed, aligned, contiguous multi-TF candle
   assert.throws(()=>validateClosedStrategyBundle(stale,asOf),
     /STRATEGY_BUNDLE_STALE_15m/);
 });
+
+
+test("read-only PILOT feed audit accepts contiguous closed 1w/1d/4h/15m/5m and real book data", async () => {
+  const {validateRecentBinanceKlines,validateBinanceBookTicker} =
+    await import('../core/market/pilot-feed-audit.ts');
+  const now=Date.UTC(2026,9,14,12,12);
+  const frames=[
+    ['1w',604_800_000,Date.UTC(2026,9,12)],
+    ['1d',86_400_000,Date.UTC(2026,9,14)],
+    ['4h',14_400_000,Date.UTC(2026,9,14,12)],
+    ['15m',900_000,Date.UTC(2026,9,14,12)],
+    ['5m',300_000,Date.UTC(2026,9,14,12,10)],
+  ];
+  for(const [tf,duration,current] of frames) {
+    const rows=[-3,-2,-1,0].map(k=>{
+      const start=current+k*duration;
+      return [start,'100','105','95','101','20',start+duration-1,
+        '2010',12,'8','800','0'];
+    });
+    const out=validateRecentBinanceKlines('BTCUSDT',tf,rows,now);
+    assert.equal(out.tf,tf);
+    assert.equal(out.lastClosedAt,current);
+    assert.equal(out.latestClose,101);
+    assert.equal(out.closedBarsChecked,3);
+    assert.equal(out.lagMs,now-current);
+    assert.equal(out.symbol,'BTCUSDT');
+  }
+  const book=validateBinanceBookTicker('BTCUSDT',{
+    symbol:'BTCUSDT',bidPrice:'100',askPrice:'100.1',
+  });
+  assert.equal(book.spreadPct > 0,true);
+  assert.equal(book.ask,100.1);
+});
+
+test("PILOT diagnostic rejects gaps, unconfirmed-only data, forged book and invalid OHLCV", async () => {
+  const {validateRecentBinanceKlines,validateBinanceBookTicker} =
+    await import('../core/market/pilot-feed-audit.ts');
+  const current=Date.UTC(2026,9,14,12);
+  const dur=900_000;
+  const now=current+2*60_000;
+  const mk=(k)=>[current+k*dur,'100','105','95','101','20',
+    current+(k+1)*dur-1,'2010',12,'8','800','0'];
+  const valid=[mk(-3),mk(-2),mk(-1),mk(0)];
+  assert.equal(validateRecentBinanceKlines('BTCUSDT','15m',valid,now)
+    .closedBarsChecked,3);
+  assert.throws(()=>validateRecentBinanceKlines('BTCUSDT','15m',
+    [mk(-3),mk(-1),mk(0)],now),/PILOT_FEED_MISSING_OR_DUPLICATE/);
+  assert.throws(()=>validateRecentBinanceKlines('BTCUSDT','15m',
+    [mk(0),mk(1),mk(2)],now),/PILOT_FEED_INSUFFICIENT_CLOSED/);
+  assert.throws(()=>validateRecentBinanceKlines('BTCUSDT','15m',
+    valid.map((r,i)=>i===1?r.map((v,j)=>j===2?'80':v):r),now),
+    /PILOT_FEED_INVALID_CANDLE/);
+  assert.throws(()=>validateRecentBinanceKlines('BTCUSDT','15m',
+    valid.map((r,i)=>i===1?r.map((v,j)=>j===6?r[6]+1:v):r),now),
+    /PILOT_FEED_INVALID_CANDLE/);
+  assert.throws(()=>validateRecentBinanceKlines('BTCUSDT','15m',
+    valid.map((r,i)=>i===1?r.map((v,j)=>j===9?'30':v):r),now),
+    /PILOT_FEED_INVALID_CANDLE/);
+  assert.throws(()=>validateBinanceBookTicker('BTCUSDT',{
+    symbol:'ETHUSDT',bidPrice:'100',askPrice:'100.1',
+  }),/PILOT_FEED_INVALID_BOOK/);
+  assert.throws(()=>validateBinanceBookTicker('BTCUSDT',{
+    symbol:'BTCUSDT',bidPrice:'100',askPrice:'200',
+  }),/PILOT_FEED_INVALID_BOOK/);
+});
