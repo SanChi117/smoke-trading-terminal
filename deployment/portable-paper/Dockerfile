@@ -12,9 +12,11 @@ RUN npm ci --prefix ./deployment/portable-paper \
       --omit=dev --ignore-scripts --no-audit --no-fund
 
 COPY core/paper/ ./core/paper/
-COPY core/market/binance-usdm-egress.ts ./core/market/binance-usdm-egress.ts
+COPY core/market/ ./core/market/
+COPY app/lib/level/ ./app/lib/level/
 COPY deployment/portable-paper/server.mjs ./deployment/portable-paper/server.mjs
 COPY deployment/portable-paper/market-egress-probe.mjs ./deployment/portable-paper/market-egress-probe.mjs
+COPY deployment/portable-paper/worker-once.mjs ./deployment/portable-paper/worker-once.mjs
 
 USER node
 EXPOSE 8097
