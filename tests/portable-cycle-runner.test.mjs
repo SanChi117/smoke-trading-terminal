@@ -83,7 +83,9 @@ test('unavailable V5 does not advance watermark and can retry within signal age'
   h.setStrategyError(true);
   const r=createPortableCycleRunner(h.ports,['BTCUSDT']);
   const fail=await r.runOnce();
-  assert.equal(fail.ok,true);
+  assert.equal(fail.ok,false);
+  assert.equal(fail.degraded,1);
+  assert.equal(fail.errors,0);
   assert.equal(h.states.get('BTCUSDT').lastCycle,null);
   assert.equal(h.states.get('BTCUSDT').lastEntryAttempt,'STRATEGY_DATA_UNAVAILABLE');
   h.setStrategyError(false);
