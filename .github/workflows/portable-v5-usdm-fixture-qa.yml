@@ -7,6 +7,8 @@ on:
       - 'core/paper/portable-paper-runtime.ts'
       - 'core/market/binance-usdm-portable.ts'
       - 'tests/portable-v5-binance-integration.test.mjs'
+      - 'tests/portable-cycle-runner.test.mjs'
+      - 'core/paper/portable-cycle-runner.ts'
       - '.github/workflows/portable-v5-usdm-fixture-qa.yml'
   pull_request:
     paths:
@@ -33,7 +35,9 @@ jobs:
       - run: npm ci
       - name: Test unchanged V5 strategy with closed USD-M fixture and PAPER runtime
         run: node --experimental-strip-types --test tests/portable-v5-binance-integration.test.mjs
+      - name: Test safe one-pass 1m/15m PAPER runner
+        run: node --experimental-strip-types --test tests/portable-cycle-runner.test.mjs
       - name: Recheck portable core invariants
         run: node --experimental-strip-types --test tests/portable-paper-runtime.test.mjs
       - name: Typecheck independent public USD-M market transport and runtime
-        run: npx tsc --noEmit --skipLibCheck --target es2022 --module nodenext --moduleResolution nodenext --strict --allowImportingTsExtensions core/market/binance-usdm-portable.ts core/paper/portable-paper-runtime.ts
+        run: npx tsc --noEmit --skipLibCheck --target es2022 --module nodenext --moduleResolution nodenext --strict --allowImportingTsExtensions core/market/binance-usdm-portable.ts core/paper/portable-paper-runtime.ts core/paper/portable-cycle-runner.ts
