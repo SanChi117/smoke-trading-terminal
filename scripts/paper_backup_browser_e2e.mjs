@@ -56,6 +56,14 @@ try{
     .waitFor({state:'visible',timeout:10_000});
   assert.equal(await peek(),initial,'FORGED_BACKUP_MUTATED_PAPER_STATE');
 
+  // Money-integrity gate: a forged total PnL must not be previewed or written.
+  const forgedPnl=structuredClone(file);
+  forgedPnl.paper.records.BTCUSDT.realizedNetUsdt=500;
+  await inspect(Buffer.from(JSON.stringify(forgedPnl)),'forged-pnl.json');
+  await page.getByText('PAPER_BACKUP_INVALID_TOTAL_PNL_BTCUSDT',{exact:false})
+    .waitFor({state:'visible',timeout:10_000});
+  assert.equal(await peek(),initial,'FORGED_PNL_MUTATED_PAPER_STATE');
+
   // Valid backup previews, cancel does not persist.
   await inspect(bytes,'valid.json');
   await page.getByText('Проверенная копия:',{exact:false}).waitFor({
@@ -84,18 +92,36 @@ try{
   await page.reload({waitUntil:'domcontentloaded',timeout:30_000});
   assert.equal(await peek(),restored,'RELOAD_LOST_PAPER_STATE');
 
+  // Restore downgrade protection: an older backup must NOT overwrite a newer
+  // revision in a disposable profile. No market signals or orders are inserted.
+  await page.evaluate(key=>{
+    const snapshot=JSON.parse(localStorage.getItem(key));
+    snapshot.records.BTCUSDT.revision=1;
+    snapshot.records.BTCUSDT.lastChangedAt=Date.now()-1000;
+    localStorage.setItem(key,JSON.stringify(snapshot));
+  },KEY);
+  const newer=await peek();
+  await inspect(bytes,'older-revision.json');
+  await page.getByText('Проверенная копия:',{exact:false})
+    .waitFor({state:'visible',timeout:10_000});
+  assert.equal(await peek(),newer,'OLDER_BACKUP_PREVIEW_MUTATED_PAPER');
+  await page.getByRole('button',{name:'Подтвердить восстановление'}).click();
+  await page.getByText('BACKUP_OLDER_THAN_CURRENT_JOURNAL: BTCUSDT',{exact:false})
+    .waitFor({state:'visible',timeout:10_000});
+  assert.equal(await peek(),newer,'OLDER_BACKUP_OVERWROTE_NEWER_JOURNAL');
+
   // Unauthenticated cloud commands must not fabricate successful saves.
   await page.getByRole('button',{name:'Сохранить в AppDeploy'}).click();
   await page.getByText('Для копии AppDeploy сначала войди в аккаунт',{
     exact:false,
   }).waitFor({state:'visible',timeout:8_000});
-  assert.equal(await peek(),restored,'ANONYMOUS_CLOUD_SAVED_OR_MUTATED_JOURNAL');
+  assert.equal(await peek(),newer,'ANONYMOUS_CLOUD_SAVED_OR_MUTATED_JOURNAL');
 
   console.log(JSON.stringify({
     e2e:'PASS',phase:'PAPER_LOCAL_BACKUP_RESTORE',
-    exportedJson:true,corruptRejected:true,forgedRejected:true,
+    exportedJson:true,corruptRejected:true,forgedRejected:true,forgedPnlRejected:true,
     canceledWithoutChange:true,explicitlyConfirmed:true,
-    reloadPreserved:true,anonymousCloudRefused:true,
+    reloadPreserved:true,olderRevisionRestoreBlocked:true,anonymousCloudRefused:true,
     realOrders:false,syntheticJournalUnaffected:true,
   }));
 }finally{
