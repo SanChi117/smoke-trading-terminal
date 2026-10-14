@@ -24,6 +24,7 @@ const FRAMES:readonly FrameConfig[]=[
 const ONE_MIN=60_000;
 const SYMBOL=/^[A-Z0-9]{3,20}USDT$/;
 const CLOCK_DELAY=15_000;
+const MAX_V5_SIGNAL_AGE=600_000;
 
 function validSymbol(symbol:string):void{
   if(!SYMBOL.test(symbol))throw Error('USD_M_INVALID_SYMBOL');
@@ -79,7 +80,7 @@ export function createReadOnlyUsdMFeed(
     const now=clock();
     if(!Number.isSafeInteger(closeAt)||closeAt<=0||
         closeAt%900_000!==0||!Number.isSafeInteger(now)||
-        closeAt>now||now-closeAt>CLOCK_DELAY)
+        closeAt>now||now-closeAt>MAX_V5_SIGNAL_AGE)
       throw Error('USD_M_V5_CLOSED_BAR_NOT_FRESH');
     const values=await Promise.all(FRAMES.map(async spec=>{
       const args=new URLSearchParams({
