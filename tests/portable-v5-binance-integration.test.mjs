@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createReadOnlyUsdMFeed} from '../core/market/binance-usdm-portable.ts';
+import {createReadOnlyUsdMFeed,latestClosedUsdMKlineEnd} from '../core/market/binance-usdm-portable.ts';
 import {createV5ClosedCycleAdapter} from '../core/paper/portable-v5-adapter.ts';
 import {createPortablePaperRuntime} from '../core/paper/portable-paper-runtime.ts';
 import {openPaperAtObservedQuote} from '../core/paper/paper-lifecycle.ts';
@@ -17,9 +17,12 @@ function row(t,d,changes={}){
   const x=[t,'100','101','99','100','22',t+d-1,'0',1,'0','0','0'];
   return Object.assign(x,changes);
 }
-function history(asOf,d,count){
+// Emulate actual Binance inclusive endTime filtering by KLINE OPEN time.
+// When endTime mistakenly falls in a still-open weekly/daily candle the mock
+// returns it, and parseRows MUST reject that leak.
+function history(endTime,d,count){
   const offset=d===604_800_000?MONDAY:0;
-  const latest=Math.floor((asOf-offset)/d)*d+offset-d;
+  const latest=Math.floor((endTime-offset)/d)*d+offset;
   return Array.from({length:count},(_,i)=>row(latest-(count-i-1)*d,d));
 }
 function fixture({now=CLOSE+2_000,status=200,corruptTf=null,liveQuery=false}={}){
@@ -48,8 +51,9 @@ function fixture({now=CLOSE+2_000,status=200,corruptTf=null,liveQuery=false}={})
       const tf=u.searchParams.get('interval');
       const def=defs.find(x=>x[0]===tf);
       assert.ok(def);
-      assert.equal(Number(u.searchParams.get('endTime')),CLOSE-1);
-      data=history(CLOSE,def[1],def[2]);
+      const cutoff=Number(u.searchParams.get('endTime'));
+      assert.equal(cutoff,latestClosedUsdMKlineEnd(CLOSE,tf));
+      data=history(cutoff,def[1],def[2]);
       if(corruptTf===tf)data.at(-1)[6]+=60_000;
       if(liveQuery)data.push(row(CLOSE,def[1]));
     }
@@ -57,6 +61,26 @@ function fixture({now=CLOSE+2_000,status=200,corruptTf=null,liveQuery=false}={})
   }
   return {request,clock:marketTime,calls};
 }
+
+test('each USD-M timeframe ends strictly at last completed candle, including Monday rollover',()=>{
+  assert.equal(latestClosedUsdMKlineEnd(CLOSE,'15m'),CLOSE-1);
+  assert.equal(latestClosedUsdMKlineEnd(CLOSE,'5m'),CLOSE-1);
+  const dayStart=Date.UTC(2026,9,14);
+  assert.equal(latestClosedUsdMKlineEnd(CLOSE,'1d'),dayStart-1);
+  assert.equal(latestClosedUsdMKlineEnd(CLOSE,'4h'),
+    Date.UTC(2026,9,14,16)-1);
+  assert.equal(latestClosedUsdMKlineEnd(CLOSE,'1w'),
+    Date.UTC(2026,9,12)-1);
+  const monday=Date.UTC(2026,9,19);
+  assert.equal(latestClosedUsdMKlineEnd(monday,'1w'),monday-1);
+  assert.equal(latestClosedUsdMKlineEnd(monday,'1d'),monday-1);
+  assert.equal(latestClosedUsdMKlineEnd(monday,'4h'),monday-1);
+  const preMonday=monday-15*60_000;
+  assert.equal(latestClosedUsdMKlineEnd(preMonday,'1w'),
+    monday-7*24*60*60_000-1);
+  assert.throws(()=>latestClosedUsdMKlineEnd(CLOSE+60_000,'1d'),
+    /USD_M_INVALID_MTF_CLOSE_TIME/);
+});
 
 const fakeAnalysis=(symbol,bundle,asOf)=>({
   symbol,evaluatedAt:asOf,state:'ready',confidence:9,
