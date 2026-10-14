@@ -67,11 +67,13 @@ try{
 
   // Preview again, explicitly confirm and verify exact persisted records.
   await inspect(bytes,'valid-again.json');
-  const confirm=page.waitForEvent('dialog',{timeout:10_000});
+  let promptSeen=false;
+  page.once('dialog',async dialog=>{
+    promptSeen=dialog.type()==='confirm';
+    await dialog.accept();
+  });
   await page.getByRole('button',{name:'Подтвердить восстановление'}).click();
-  const dialog=await confirm;
-  assert.equal(dialog.type(),'confirm');
-  await dialog.accept();
+  assert.equal(promptSeen,true,'RESTORE_CONFIRMATION_NOT_SHOWN');
   await page.getByText('Резервная копия восстановлена и прочитана обратно.',{
     exact:false,
   }).waitFor({state:'visible',timeout:10_000});
