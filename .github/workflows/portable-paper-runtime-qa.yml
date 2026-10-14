@@ -34,4 +34,4 @@ jobs:
       - name: Test autonomous PAPER boundary with synthetic feeds
         run: node --experimental-strip-types --test tests/portable-paper-runtime.test.mjs
       - name: Verify TypeScript contracts
-        run: npx tsc --noEmit
+        run: npx tsc --noEmit --skipLibCheck --target es2022 --module nodenext --moduleResolution nodenext --strict --allowImportingTsExtensions core/paper/portable-paper-runtime.ts
