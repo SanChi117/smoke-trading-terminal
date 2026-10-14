@@ -1,5 +1,17 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-15 — AppDeploy v48: Binance 451 diagnostic UI fix (NOT restored connectivity)
+
+- User reported persistent "ошибка подключения к Бинанс" on published website. Audited actually deployed AppDeploy v47 `1792003179327`, not the GitHub Next/Vinext branch. Found browser `app/lib/binance-level-client.ts` retried HTTP 451/403 4 times and eventually surfaced generic error. Backend `GET /api/market` forwards official USD-M and cannot guarantee access; `backend/pilot-v5.ts` already explicitly reports access restriction.
+- AppDeploy source transport `app/lib/binance-public-transport.ts` uses official `fapi.binance.com` and an SDK-backed `/api/market` fallback only. No alternate source, proxies, fake candles or real order access introduced. Browser diagnostic `PilotMarketFeedAudit.tsx` still uses direct USD-M.
+- Made *deployed AppDeploy-only* surgical update to `app/lib/binance-level-client.ts`: HTTP 451/403 from public-data fetch now raises `BINANCE_USDM_ACCESS_RESTRICTED_HTTP_<code>` with Russian explanation, reports OFFLINE, and prevents further retries for those explicit statuses. Updated corresponding public GUI fault-injection expectation in `tests/tests.txt`.
+- **Confirmed** AppDeploy new snapshot `1792016139238` status `ready`; `get_app_status` reports no frontend/backend errors, no QA snapshot network errors. URL `https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/`. This is **only a diagnostic/status display improvement**, not proof real Binance candles load; no real USD-M connection verified on the published site by this check.
+- Separate real GitHub Actions USD-M `/fapi/v1/time` check `38636454929` returned **HTTP 451**. Do not generalize this to every user browser or region. Railway platform not deployed/checked. Active V5 rules and PAPER journals unchanged; no real orders; GitHub PR #88 remains DRAFT. GitHub branch files are NOT identical to AppDeploy Vite source; AppDeploy-only patch intentionally not copied into GitHub Next/Vinext terminal by default.
+- **Next diagnosis:** if updated site still cannot fetch public USD-M, capture browser request response and compare with `/api/pilot/market-health` signed-in diagnostic (browser vs AppDeploy backend), then choose a legitimately accessible permitted runtime/feed; do not claim restored connectivity before live public candle evidence.
+
+---
+
+
 ## 2026-10-14 — ADVERSARIAL VERIFICATION P4: real GitHub egress HTTP 451 + FIXED unfinished higher-TF candle bug
 
 **User request:** "проввевряй" — independently verify existing implementation, refute unjustified readiness, test REAL Binance USD-M public access, and record reproducible evidence. This cycle did NOT deploy AppDeploy, Railway, trading engine, or anything to user's account. PR #88 must remain DRAFT; strategy V5 untouched; PAPER-only.
