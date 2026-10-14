@@ -53,3 +53,30 @@ jobs:
         run: node --experimental-strip-types --test tests/binance-usdm-egress.test.mjs
       - name: Build standalone Docker image without deployment
         run: docker build --file deployment/portable-paper/Dockerfile --tag smoke-portable-paper:test .
+      - name: Boot Docker image with isolated PostgreSQL and test read-only API
+        env:
+          SMOKE_PAPER_READ_TOKEN: ci_fixture_authorization_token_1234567890abcdef
+        run: |
+          set -eu
+          ID=$(docker run --rm -d --network host \
+            -e SMOKE_PAPER_DATABASE_URL="$SMOKE_TEST_PG_URL" \
+            -e SMOKE_PAPER_LEDGER_KEY=ci_docker_smoke \
+            -e SMOKE_PAPER_READ_TOKEN="$SMOKE_PAPER_READ_TOKEN" \
+            -e SMOKE_PAPER_HOST=0.0.0.0 \
+            -e PORT=18997 smoke-portable-paper:test)
+          trap 'docker stop "$ID" >/dev/null 2>&1 || true' EXIT
+          READY=0
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:18997/health > /tmp/smoke-paper-health.json; then
+              READY=1
+              break
+            fi
+            sleep 0.2
+          done
+          if [ "$READY" != "1" ]; then docker logs "$ID"; exit 1; fi
+          node -e 'const j=require("/tmp/smoke-paper-health.json");if(!j.ok||j.scanEnabled!==false||j.executionAuthorized!==false||j.storage!=="POSTGRES_READY")process.exit(1)'
+          HTTP=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18997/status)
+          test "$HTTP" = "401"
+          curl --silent --fail -H "Authorization: Bearer $SMOKE_PAPER_READ_TOKEN" http://127.0.0.1:18997/status > /tmp/smoke-paper-status.json
+          node -e 'const j=require("/tmp/smoke-paper-status.json");if(!j.ok||j.strategyId!=="V5_UNMODIFIED"||j.scanEnabled!==false||j.executionAuthorized!==false)process.exit(1)'
+          echo 'PORTABLE_PAPER_CONTAINER_SMOKE=PASS'
