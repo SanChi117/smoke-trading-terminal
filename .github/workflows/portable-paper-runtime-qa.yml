@@ -1,0 +1,37 @@
+name: portable-paper-runtime-qa
+
+on:
+  push:
+    paths:
+      - 'core/paper/portable-paper-runtime.ts'
+      - 'core/paper/paper-pilot-state.ts'
+      - 'core/paper/paper-lifecycle.ts'
+      - 'tests/portable-paper-runtime.test.mjs'
+      - '.github/workflows/portable-paper-runtime-qa.yml'
+  pull_request:
+    paths:
+      - 'core/paper/portable-paper-runtime.ts'
+      - 'core/paper/paper-pilot-state.ts'
+      - 'core/paper/paper-lifecycle.ts'
+      - 'tests/portable-paper-runtime.test.mjs'
+      - '.github/workflows/portable-paper-runtime-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-paper:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+      - run: npm ci
+      - name: Test autonomous PAPER boundary with synthetic feeds
+        run: node --experimental-strip-types --test tests/portable-paper-runtime.test.mjs
+      - name: Verify TypeScript contracts
+        run: npx tsc --noEmit
