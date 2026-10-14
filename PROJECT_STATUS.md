@@ -1,5 +1,16 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-14 — Continuation cycle: published v47 local PAPER restore integrity E2E
+
+- **Test code commit:** `7b0d68c533a2654e6163e1d02859dfacfb392733`; only `scripts/paper_backup_browser_e2e.mjs` changed. No AppDeploy production edits or deployment, live site remains `v47` snapshot `1792003179327`.
+- **Actual browser E2E SUCCESS:** `paper-backup-browser-e2e` run `38623412153`, job `116056413858` against published v47. Real Chromium in a fresh, isolated anonymous browser profile: download 5-record empty PAPER JSON; reject malformed JSON; reject forged `executionAuthorized:true`; additionally reject forged BTC realizedNetUsdt (`PAPER_BACKUP_INVALID_TOTAL_PNL_BTCUSDT`); preview valid copy without write; cancel without write; explicitly confirm; verify exact JSON readback and same bytes after reload; create a higher **revision only inside the disposable test profile** and verify `BACKUP_OLDER_THAN_CURRENT_JOURNAL: BTCUSDT` blocks overwrite; reject unsigned cloud save without changing local data. Log emitted `e2e:PASS`, `forgedPnlRejected:true`, `olderRevisionRestoreBlocked:true`, `anonymousCloudRefused:true`, `realOrders:false`.
+- On `7b0d68...`, `terminal-ci` SUCCESS run `38623423395`, `level-flow-ci` SUCCESS `38623422880`. Long `level-flow-logic-audit` run `38623423011` was still pending when this checkpoint was written. Check final status on exact SHA; do not guess.
+- **Evidence limitation:** This is published UI/browser **local JSON** restore and unauthenticated cloud UI rejection. It does NOT demonstrate authenticated AppDeploy cloud database restore, independent owner isolation, owner-account migration, non-empty genuine trade journal restoration, or real-market READY → PAPER OPEN → CLOSE. Existing owner's stored data was never read, overwritten, or cleared. No strategy V5 change or live trading.
+- **NEXT P0:** Two authorized isolated test users + a disposable non-owner journal are necessary for signed-in cloud save/list/inspect/restore/readback and cross-account deny. Do not manufacture auth evidence or restore the owner's working journal. The real 24/7 Binance-hosted PAPER problem (HTTP 451) is still blocked pending compliant regional probe.
+
+---
+
+
 ## 2026-10-14 — Continuation cycle: v47 published-browser resilience QA
 
 **Scope:** Reuse current AppDeploy v47, no production code deployment, no V5 edits, no real orders, no owner journal/backup mutations. Previous handoff read in full. The older sections below are historical and not an assertion of current release readiness.
