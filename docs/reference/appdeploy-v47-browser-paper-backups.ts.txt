@@ -1,0 +1,69 @@
+// EXACT READ-ONLY SNAPSHOT FROM AppDeploy v47 (1792003179327).
+// Reference-only: not an active GitHub backend route. Do not deploy this file.
+import { db, error, isAppDatabaseError, json, requireAuth, type RouterRoutes } from '@appdeploy/sdk';
+import { parseLocalPaperBackup } from '../core/paper/paper-backup';
+
+// Owner-isolated, opt-in copies only. No auto trading or shared global ledger.
+const SYMBOLS = ['BTCUSDT','ETHUSDT','SOLUSDT','LINKUSDT','SUIUSDT'] as const;
+const MAX_BYTES = 240_000;
+type Parsed = ReturnType<typeof parseLocalPaperBackup>;
+type Packet = Parsed & {format:'SMOKE_BROWSER_PAPER_BACKUP_V1'};
+type Stored = {
+  backup:Packet;createdAt:number;exportedAt:number;
+  revisions:Record<string,number>;closedCount:number;
+};
+function tableFor(userId:string):string {
+  if(!/^[a-f0-9-]{32,40}$/i.test(userId))throw Error('PAPER_CLOUD_INVALID_OWNER');
+  return 'pilot_browser_backup_v1_'+userId.replace(/-/g,'').toLowerCase();
+}
+function failure(caught:unknown) {
+  if(isAppDatabaseError(caught)&&caught.code==='AppDatabaseQuotaExceeded')
+    return error('PAPER_CLOUD_DATABASE_QUOTA',429);
+  return error('PAPER_CLOUD_BACKUP_UNAVAILABLE',503);
+}
+export const browserPaperBackupRoutes:RouterRoutes={
+  'POST /api/pilot/browser-backups':[requireAuth(),async ({user,body})=>{
+    try {
+      const bytes=new TextEncoder().encode(JSON.stringify(body)).length;
+      if(bytes>MAX_BYTES)return error('PAPER_CLOUD_BACKUP_TOO_LARGE',413);
+      const parsed=parseLocalPaperBackup(body,SYMBOLS,Date.now());
+      const packet:Packet={format:'SMOKE_BROWSER_PAPER_BACKUP_V1',...parsed};
+      const table=tableFor(user!.userId),now=Date.now();
+      const stored:Stored={
+        backup:packet,createdAt:now,exportedAt:packet.exportedAt,
+        revisions:Object.fromEntries(SYMBOLS.map(s=>[s,packet.paper.records[s].revision])),
+        closedCount:SYMBOLS.reduce((n,s)=>n+packet.paper.records[s].closed.length,0),
+      };
+      const [id]=await db.add(table,[stored]);
+      if(!id)return error('PAPER_CLOUD_SAVE_UNCONFIRMED',503);
+      const [verified]=await db.get<Stored>(table,[id],{consistent:true});
+      if(!verified||verified.exportedAt!==packet.exportedAt||
+          JSON.stringify(verified.backup)!==JSON.stringify(packet))
+        return error('PAPER_CLOUD_SAVE_READBACK_FAILED',503);
+      return json({id,exportedAt:packet.exportedAt,closedCount:stored.closedCount,stored:true},201);
+    } catch(caught) {
+      if(caught instanceof Error&&caught.message.startsWith('PAPER_BACKUP_'))
+        return error(caught.message,400);
+      return failure(caught);
+    }
+  }],
+  'GET /api/pilot/browser-backups':[requireAuth(),async ({user})=>{
+    try {
+      const page=await db.list<Stored>(tableFor(user!.userId),{limit:8});
+      return json({items:page.items.map(item=>({
+        id:item.id,createdAt:item.createdAt,exportedAt:item.exportedAt,
+        revisions:item.revisions,closedCount:item.closedCount,
+      })),hasMore:!!page.nextToken});
+    }catch(caught){return failure(caught);}
+  }],
+  'GET /api/pilot/browser-backups/:id':[requireAuth(),async ({user,params})=>{
+    if(!/^[A-Za-z0-9_-]{6,100}$/.test(params.id??''))
+      return error('PAPER_CLOUD_INVALID_BACKUP_ID',400);
+    try {
+      const [saved]=await db.get<Stored>(tableFor(user!.userId),[params.id],{consistent:true});
+      if(!saved)return error('PAPER_CLOUD_BACKUP_NOT_FOUND',404);
+      parseLocalPaperBackup(saved.backup,SYMBOLS,Date.now());
+      return json({id:params.id,backup:saved.backup});
+    }catch(caught){return failure(caught);}
+  }],
+};
