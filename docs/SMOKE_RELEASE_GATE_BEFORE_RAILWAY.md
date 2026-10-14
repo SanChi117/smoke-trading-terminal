@@ -29,7 +29,7 @@ Evidence must be tracked separately:
 | Integrity of modeled gross/net PnL and bounded journal totals during backup import | AppDeploy v42 source + GitHub pure-core tests | DEPLOYED, manual E2E UNVERIFIED |
 | Binance kline normalizer rejects malformed OHLCV, mixed instruments, wrong weekly/month boundaries | GitHub shared market-data normalizer + deterministic tests | GITHUB CODED, NOT APPDEPLOY-DEPLOYED |
 | Future module closed multi-timeframe gate rejects gapped, stale and partial candles | GitHub core/market/strategy-candles.ts (not wired into V5) | GITHUB CODED, NOT ACTIVE |
-| Binance USD-M direct browser access across symbols/TFs | AppDeploy v43 read-only 30-check UI | DEPLOYED; USER-BROWSER E2E UNVERIFIED |
+| Binance USD-M direct browser access across symbols/TFs | AppDeploy v44 read-only 30-check UI | DEPLOYED; GitHub-runner BROWSER E2E PASS (data HTTP 451), USER-BROWSER E2E UNVERIFIED |
 | Server-side autonomous PAPER and scheduler | AppDeploy server config explicitly paused due to HTTP 451; browser manual workflow | BLOCKED |
 | 24/7 durable journal with transactional backend / recovery | Not implemented or exercised for the present browser research engine | BLOCKED |
 | Portable Railway importer and full updated UI export | AppDeploy-vs-GitHub reconciliation incomplete | BLOCKED |
@@ -103,3 +103,13 @@ A green CI check proves only the tested code on a commit. AppDeploy 'ready' only
 - Railway admission test: deploy an independent read-only probe in the exact candidate service region and network; verify required 1w/1d/4h/15m/5m/1m candles, depth/quotes and rate-limit behavior through permitted endpoints before migrating any journal or enabling 24/7 PAPER worker. Region must comply with exchange access requirements. HTTP 403/451/429, CORS or unverified OHLCV freshness blocks release.
 - The built-in v43 browser diagnostic may work even when cloud egress fails, but requires an actual operator click to establish results. Until then, BROWSER LIVE FEED remains UNVERIFIED; a green AppDeploy build cannot replace the check.
 - GitHub public-host appdeploy-public-probe tested only the frontend shell; API paths on the SPA host return an HTML fallback. Authenticated SDK API access still awaits an account-based E2E test.
+
+## 2026-10-14 v44 actual browser-UI E2E acceptance
+
+- AppDeploy v44 snapshot 1791995185936 published and re-read. It additionally rejects future-opening Binance candle data without changing the active V5 or PAPER journal contract.
+- GitHub Actions run 38598297290, pilot-feed-browser-e2e, completed PASS in Chromium with desktop viewport 1280x900 AND mobile viewport 390x844.
+- On both viewports, clicked built-in PILOT self-test and observed 17 of 17 isolated PAPER mechanical test scenarios PASS. This is genuine page E2E of deterministic synthetic trade logic; it is NOT a genuine market-triggered trade.
+- On both viewports, clicked read-only Binance diagnostic, observed 30 of 30 rendered symbol/timeframe/quote results. In the GitHub region, there were 0 market PASS, 30 market ERROR due to blocked Binance USD-M access.
+- Before and after all button interactions, headless browser localStorage PAPER journal bytes were identical. Neither test injects READY, opens PAPER trades or sends real broker orders.
+- GitHub terminal-ci and level-flow-ci passed on UI+test code commit 56d5522b01f0aa98b2875c34a3d97b5e324cf434. Re-check CI on latest docs-only head before merge.
+- Still required for autonomy/release: end-user browser data audit, real signal PAPER READY->OPEN->CLOSE, authenticated AppDeploy backup E2E with a real account and separate-user isolation, chart/scanner/backtest mobile acceptance, and a lawful Binance-accessible 24/7 service host.
