@@ -1,0 +1,49 @@
+name: portable-paper-standalone-http-qa
+
+on:
+  push:
+    paths:
+      - 'deployment/portable-paper/**'
+      - 'core/paper/postgres-paper-store.ts'
+      - 'deployment/postgres/0001_paper_state.sql'
+      - '.github/workflows/portable-paper-standalone-http-qa.yml'
+  pull_request:
+    paths:
+      - 'deployment/portable-paper/**'
+      - 'core/paper/postgres-paper-store.ts'
+      - 'deployment/postgres/0001_paper_state.sql'
+      - '.github/workflows/portable-paper-standalone-http-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-http-readonly-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smoke_test
+          POSTGRES_PASSWORD: smoke_ci_only
+          POSTGRES_DB: smoke_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smoke_test -d smoke_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SMOKE_TEST_PG_URL: postgresql://smoke_test:smoke_ci_only@127.0.0.1:5432/smoke_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Install isolated server dependencies
+        run: npm install --prefix deployment/portable-paper --ignore-scripts --no-audit --no-fund
+      - name: Verify real PostgreSQL read-only server, fail-close, crash recovery
+        run: node --experimental-strip-types --test deployment/portable-paper/tests/server.integration.mjs
