@@ -1,0 +1,36 @@
+name: binance-usdm-live-egress-diagnostic
+
+# Read-only evidence collection from the GitHub Actions host ONLY.
+# This is NOT a Railway-region test and NEVER grants worker authorization.
+on:
+  push:
+    paths:
+      - '.github/workflows/binance-usdm-live-egress-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-usdm-get-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Direct public Binance USD-M GET probe from GitHub host
+        shell: bash
+        run: |
+          set +e
+          node --experimental-strip-types deployment/portable-paper/market-egress-probe.mjs
+          RESULT=$?
+          set -e
+          echo "GITHUB_HOST_PUBLIC_USDM_PROBE_EXIT=$RESULT"
+          if [ "$RESULT" -eq 0 ]; then
+            echo 'PUBLIC_USDM_GITHUB_HOST=AVAILABLE (NOT RAILWAY)' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'PUBLIC_USDM_GITHUB_HOST=BLOCKED_OR_UNAVAILABLE (NOT RAILWAY)' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Worker remains DISABLED; no database or order endpoints contacted."
