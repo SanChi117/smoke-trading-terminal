@@ -1,13 +1,16 @@
 # SMOKE Trading OS — Project Status
 
-## Latest checkpoint — 2026-10-14 (v44 deployed, desktop + mobile browser E2E passed)
+## Latest checkpoint — 2026-10-14 (v44, local JSON backup browser E2E PASS, user feed report)
 
 **Overall: PARTIAL / NOT YET AUTONOMOUS.** The existing V5 strategy is active and unchanged; live Binance orders remain disabled.
 
 - **AppDeploy v44**, snapshot `1791995185936`: published and verified `ready` with no recorded frontend/backend/network QA errors. The PILOT read-only audit checks 5 symbols x 5 TF and bid/ask. v44 additionally rejects future-opening candle timestamps; source was read back after deployment. v43 remains a rollback version.
 - **Actual headless browser E2E PASSED**, GitHub Actions `pilot-feed-browser-e2e` run `38598297290`: desktop 1280x900 and mobile 390x844 each executed the built-in **17/17 synthetic PAPER mechanical checks PASS**, rendered **all 30 market data audit results**, and verified `localStorage` PAPER journal remained byte-for-byte unchanged. These are real browser UI interactions, not merely component unit tests.
 - **External market access is BLOCKED on the GitHub runner**: the browser run produced 0 market PASS / 30 ERROR; separate real REST probe `38596941787` previously confirmed all 30 public Binance Futures requests returned **HTTP 451**. AppDeploy's older backend also reported HTTP 451. A different compliant cloud region or permitted data source must be tested before server-side autonomous PAPER can be declared operational.
-- **User's actual browser Binance data access remains UNVERIFIED.** Its network/region may differ; v44 offers the on-screen button `Проверить реальные данные (5 монет)`.
+- **User's browser reported a successful Binance data audit**; the run's raw 30 per-symbol responses are not independently logged by our tools. v44 offers the on-screen button `Проверить реальные данные (5 монет)`.
+
+- **PAPER local JSON backup E2E PASS**: GitHub Actions run `38607247143` exercised export, malformed JSON rejection, forged LIVE authority rejection, preview, cancel, explicit confirm, persistence readback and reload in an isolated unsigned Chromium profile against published v44. Source changes only added E2E test scripts/workflow, not production trading logic. This proves restore of an **empty test journal**; authorized cloud backups and restoration of a real trade journal remain UNVERIFIED.
+- **Operator reports browser market-data check completed without errors**. This is the user's confirmation; detailed 30-row evidence was not retrieved by tooling. It confirms their browser path is usable in the tested session but does NOT resolve GitHub/AppDeploy HTTP 451 egress or validate Railway.
 - **Authenticated cloud-backup round-trip and cross-account authorization remain UNVERIFIED.** Plain public-host `/api/pilot` requests return HTML SPA fallback rather than backend API responses, so this is not proof of a vulnerability or auth success.
 - **Genuine V5 READY → PAPER OPEN → CLOSED on live market data remains UNVERIFIED.** Synthetic 17/17 PASS does not meet this gate. Server-side hourly worker remains paused. Chart pan/zoom/backtest and long-run resilience have not yet had full E2E certification.
 - **GitHub draft PR #88** holds the pure-core fixes, market feed validators, external probes, and release documentation. Both `terminal-ci` and `level-flow-ci` passed on the latest code SHA `56d5522b01f0aa98b2875c34a3d97b5e324cf434`. Subsequent documentation edits require CI checks at the newer exact SHA before merging.
