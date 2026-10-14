@@ -1,5 +1,5 @@
 import {analyzeLevelFlow} from '../../app/lib/level/analysis-qfvg-fs15.ts';
-import type {MtfLevelAnalysis} from '../../app/lib/level/types.ts';
+import type {MtfLevelAnalysis,TimeframeBundle} from '../../app/lib/level/types.ts';
 import type {PortablePaperStrategy} from './portable-paper-runtime.ts';
 import {validateClosedStrategyBundle} from '../market/strategy-candles.ts';
 import type {StrategyCandleBundle,StrategyFrame} from '../market/strategy-candles.ts';
@@ -19,7 +19,7 @@ export type V5EvidenceLoader=(symbol:string,closedAt:number)=>
  */
 export function createV5ClosedCycleAdapter(
   loadBundle:V5EvidenceLoader,
-  analyze:(symbol:string,bundle:StrategyCandleBundle,asOf:number)=>
+  analyze:(symbol:string,bundle:TimeframeBundle,asOf:number)=>
     MtfLevelAnalysis=analyzeLevelFlow,
 ):PortablePaperStrategy {
   if(typeof loadBundle!=='function'||typeof analyze!=='function')
@@ -40,7 +40,11 @@ export function createV5ClosedCycleAdapter(
         if(validated[tf].length<MIN_V5_BARS[tf])
           throw Error('PORTABLE_V5_INSUFFICIENT_'+tf);
       }
-      const analysis=analyze(symbol,validated,closeAt);
+      // Feed the unchanged V5 engine a mutable copy of validated closed bars.
+      const v5Input=Object.fromEntries(FRAMES.map(tf=>[
+        tf,validated[tf].map(bar=>({...bar})),
+      ])) as TimeframeBundle;
+      const analysis=analyze(symbol,v5Input,closeAt);
       if(!analysis||analysis.symbol!==symbol||
           analysis.evaluatedAt!==closeAt||
           !['ready','watch','blocked'].includes(analysis.state)||
