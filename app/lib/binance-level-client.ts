@@ -1,4 +1,5 @@
 import type { Candle, Timeframe, TimeframeBundle } from "./mtf-level-strategy";
+import {loadClosedKlineHistory} from "./kline-range-core.ts";
 
 import { DIRECT_REST, fetchFuturesPublic } from "./binance-public-transport.ts";
 const WS = "wss://fstream.binance.com/ws";
@@ -79,32 +80,10 @@ export async function fetchKlinesRange(
   endTime: number,
   signal?: AbortSignal,
 ): Promise<Candle[]> {
-  const rows: Candle[] = [];
-  let cursorEnd = Math.min(endTime, Date.now());
-  const estimatedPages = Math.ceil((cursorEnd - startTime) / INTERVAL_MS[timeframe] / 1500) + 3;
-  const maxPages = Math.max(3, Math.min(80, estimatedPages));
-
-  for (let page = 0; page < maxPages && cursorEnd >= startTime; page += 1) {
-    const batch = await fetchKlines(symbol, timeframe, {
-      limit: 1500,
-      startTime,
-      endTime: cursorEnd,
-      signal,
-    });
-    if (!batch.length) break;
-    rows.unshift(...batch);
-    const firstOpenTime = batch[0].time;
-    if (firstOpenTime <= startTime || batch.length < 1500) break;
-    const nextEnd = firstOpenTime - 1;
-    if (nextEnd >= cursorEnd) break;
-    cursorEnd = nextEnd;
-    await sleep(70);
-  }
-
-  return rows
-    .filter((candle) => candle.time >= startTime && candle.time <= endTime)
-    .filter((candle, index, all) => all.findIndex((item) => item.time === candle.time) === index)
-    .sort((a, b) => a.time - b.time);
+  return loadClosedKlineHistory(
+    timeframe,startTime,endTime,
+    query=>fetchKlines(symbol,timeframe,{...query,signal}),
+  );
 }
 
 export async function fetchStrategyBundle(symbol: string, signal?: AbortSignal): Promise<TimeframeBundle> {
