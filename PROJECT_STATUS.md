@@ -1,5 +1,37 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-14 — PORTABILITY P1: platform-free PAPER runtime + PostgreSQL CAS
+
+**Owner decision:** AppDeploy is a temporary UI/test host. Authenticated cross-account AppDeploy cloud backup E2E is DEFERRED, not silently passed. Mandatory data-recovery rehearsal will instead target PostgreSQL at the final hosting platform. The repo PR #88 stays DRAFT. V5 is unchanged and live orders remain forbidden.
+
+### Completed implementation (commit sequence)
+- `2e22e676b9c4eb7d04adc69378e73184cda502a0`: added `core/paper/portable-paper-runtime.ts`. Pin `V5_UNMODIFIED` as sole active strategy ID; strictly PAPER-only; injectable strategy/quote/minute/store/clock ports; 15m signal path separate from independent 1m existing-position monitor; fail-closed data errors and corrupt journal; commit only on durable atomic store CAS.
+- `8ba025d4b86e4e9b4c813b30b62e4915cdd7243c`: added 11 deterministic runtime tests, including READY/FLAT, complete mock PAPER lifecycle with reboot, dual-hit STOP-first, minute failure HALT/recovery, same-bar retry, forged strategy response, malformed clock, corrupted existing state, revision conflict and two-worker race.
+- `0bf77307cb83b6fddb3adf38d2cb0bc84fc14e9a`: new dedicated `portable-paper-runtime-qa` workflow; initial run `38628835779` showed **11/11 TEST PASS** but failed because an unrestricted `npx tsc --noEmit` also included pre-existing legacy UI/Cloudflare TypeScript errors in `ProLevelChart.tsx`, `ProfessionalChart.tsx`, `analysis-v3.ts`, `core/ledger/store.ts`, `db/index.ts`, and `worker/index.ts`. These unrelated legacy errors are NOT fixed or marked passed.
+- `382f694b4740e223ead869910a1e967a028daeed`: corrected new isolated workflow's `--strict` typecheck to target the portable PAPER core only; **SUCCESS** run `38629001036`. Existing general `npm test`/build workflows remained green.
+- `8d3e6f3bf2d2713d307f90566da282f67e3be2c2`: PostgreSQL schema `deployment/postgres/0001_paper_state.sql` with versioned `smoke_paper_state_v1`, composite `ledger_key,symbol` PK, immutable scoped storage contract, revision constraints.
+- `4b7398c38382d845ec7b15a96b1183326a0f30b9`: `core/paper/postgres-paper-store.ts` with a portable injected PostgreSQL query port; one-statement `UPDATE/INSERT` CAS including first-write concurrency, revision/authorization checks, row version readback validation. No DB credentials or SDK dependency.
+- `644e75339f2caac3c328a9da49de4572ef817033`: added ephemeral REAL PostgreSQL tests `tests/postgres-paper-store.integration.mjs`: namespace isolation, stale revision rejection, new-adapter readback, two-worker CAS race, rejecting forged authorization, and end-to-end **synthetic V5 PAPER OPEN → 1m STOP → reread/replay**.
+- `0adb21f32357060186ab0e076568892589614124`: GitHub `portable-paper-postgres-qa` starts throwaway PostgreSQL 16 service and installs CI-only `pg` client without changing project dependencies.
+- `963b06c128285c121cb83e2e156ea4081e19ddcb`: documentation `docs/PORTABLE_PAPER_RUNTIME_2026-10-14.md` detailing responsibilities, intended architecture, admission gates and remaining work.
+
+### Rechecked actual evidence
+- `portable-paper-runtime-qa` **SUCCESS** run `38629334134` on source commit `0adb21f3...`, 11 synthetic runtime tests, strict TypeScript scoped to portable core. Test-only run `38629001036` also SUCCESS after scope fix.
+- `portable-paper-postgres-qa` **SUCCESS** run `38629334069`, job `116076606010`, log `PORTABLE_PAPER_POSTGRES_INTEGRATION PASS`, **3/3** tests, real ephemeral PostgreSQL 16, after worker restart journal persisted, STOP-first and no duplicate close, synthetic market, no orders or existing user data. A second push-triggered instance `38629326794` job `116076584002` also SUCCESS, log reported `3 pass, 0 fail`.
+- On tested source commit `0adb21f3...`: `terminal-ci` SUCCESS `38629334153`; `level-flow-ci` SUCCESS `38629334209`; `level-flow-logic-audit` `38629334004` CANCELLED by superseding commits (do not claim pass). Earlier full logic audit on prior baseline `68742880...` SUCCESS `38624686539`.
+- AppDeploy published `v47` snapshot `1792003179327` remains `ready` with frontend/backend error lists empty. PR #88 open and DRAFT at documentation HEAD `963b06c1...`. **Zero deployment** or owner PAPER record changes.
+
+### Skeptical verification / still NOT proven
+- No actual autonomous 24/7 server scheduled or deployed. The portable runtime needs a host process, fully validated market-data facade, credentials-free data access and SQL driver wiring. Existing Binance USDM HTTP 451 observed on AppDeploy and GitHub runners has not been resolved.
+- Market inputs in both runtime and PostgreSQL tests are synthetic. This is NOT a real V5 READY→OPEN→CLOSE trade, not evidence of market profitability or fully working 24/7 terminal.
+- PostgreSQL integration tests use an isolated CI database, not actual owner journal. Disaster-recovery `pg_dump`/restore drill, credential handling, region selection, restart after genuine process death and multi-hour network endurance are still outstanding.
+- Existing GitHub Next/Vinext versus published AppDeploy Vite runtime divergence persists. Do not deploy the GitHub tree over v47 without source migration audit. Old legacy whole-project TS diagnostics remain unsolved.
+- The new strategy module is a **port interface**, not a live change to V5. The new trading entry methodology is not activated.
+- NEXT: build a fail-closed standalone, read-only health/status process with Postgres wiring, optional data adapter, explicit safe disabled default; test persisted journal after process restart; only then choose compliant Railway region with proven USD-M market-data egress. Railway migration and real trade authorization are NOT authorized at this stage.
+
+---
+
+
 ## 2026-10-14 — Cloud backup owner isolation route contract (read-only production snapshot)
 
 **Completed safe work:**
