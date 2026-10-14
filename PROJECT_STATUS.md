@@ -1,5 +1,37 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-14 — PORTABILITY P2: standalone PAPER read-only server, locked Docker image, USD-M egress preflight
+
+**Owner direction:** prepare migration away from temporary AppDeploy, keep V5 untouched and absolutely no real orders; skip optional AppDeploy two-account backup E2E. Never replace the deployed Vite v47 by this Next/Vinext GitHub tree. PR #88 remains DRAFT.
+
+### What was actually implemented and recorded
+- `ee4384183f5e08cba95e91ff038d524f16e2a154`: new isolated `deployment/portable-paper/package.json` with `pg@8.16.3`.
+- `ffee336415665e7218f3d75dc5b478dc2649e02f`: standalone `deployment/portable-paper/server.mjs` Node process with PostgreSQL connectivity and read-only GET API, independent of browser/AppDeploy. `/health` uses actual DB ping, `/status` returns a bearer-protected one-ledger summary, `/journal/:symbol` returns stored PAPER data only on successful auth and validation. HTTP mutations 405; wrong/missing auth 401; corrupt state or DB loss 503. Public binding requires a bearer secret of length >=32. It refuses `SMOKE_PAPER_SCAN_ENABLED=1` because NO live strategy/market feed is wired. This is a **read-only control-plane service**, not an operating autonomous strategy worker.
+- `d835483d462e9d19d3c3a4d0a815d26ad3b646da`: actual child-process HTTP/DB integration tests: auth, 405, malformed public bind rejected, namespace isolation, PostgreSQL saved state across process SIGTERM and restart, corrupt PAPER authorization flag fails 503, no user journal data accessed.
+- `c6cbf7b76e72dcb835e246bd10a46ce919d54c40`: GitHub Actions `portable-paper-standalone-http-qa` with ephemeral PostgreSQL 16. Initial actual test **2/2 PASS** run `38630555352`, job `116080767990`. `PORTABLE_PAPER_STANDALONE_HTTP_E2E PASS` explicitly recorded `realOrders:false`, `scanEnabled:false`, `ownerJournalMutated:false`.
+- `b23575dc1450d8ada49a57f59dd79607f59fdf27`: pure, credentials-free, public Binance USD-M egress gate `core/market/binance-usdm-egress.ts`: time clock, BTC bookTicker bid/ask and last 2 contiguous fresh CLOSED 1m klines via **hardcoded official public HTTPS API**. HTTP451/429, stale clock/candles, gaps, corrupt data and network outage fail CLOSED. Does NOT proxy, bypass restrictions, test all TF, or authorize trading.
+- `15e70071c49048821f4a0c2f0d4268f7aa4bbf0d`: single-run `deployment/portable-paper/market-egress-probe.mjs` for a future lawful target host/region; **NOT executed on Railway**.
+- `70fa1ecc775f055005c7698b002bcc8692a7be30` and `1f28a31cb8bc162928197278fcf0615a56eca2a2`: eight isolated egress fixture tests and automatic CI integration. Action run `38631080434`, job `116082570206` **SUCCESS**, 2/2 server tests and **8/8 egress fixture tests**. NO real Binance connectivity verified.
+- `20aa9c6454442b1532b98dff2acfcdedd954aa42`: root-context Dockerfile `deployment/portable-paper/Dockerfile`, Node 22.16 bookworm-slim, non-root `node` user; no external deployment. Docker build **SUCCESS** run `38631275329`, job `116083237507`.
+- `f9ec11f468020763369e24fc11f98ee1f26886d8`: comprehensive migration/security/runbook `docs/PORTABLE_PAPER_SERVICE_RUNBOOK_2026-10-14.md`.
+- `3f494cbe325c73e412844b41e71031d09f6f22e7`: temporary reviewed CI generation of `package-lock`; Action `38631518268`, job `116084057485` **SUCCESS**; used only to capture the public `pg` dependency graph, no secrets.
+- `e0862a13637e484d2283ab7bec4c2894665302dd`: committed **real** `deployment/portable-paper/package-lock.json` from CI with npm v3 lock, exactly `pg@8.16.3`, 15 packages. No DB credentials present. `fe41883cc8b73eeb32d215da9eec6c9d2658f0bf` switches integration CI to `npm ci` and removes temporary lock log. `9814045dcbf3abcb6709bb01de8e5cc2ea3bb84f` switches Dockerfile COPY lockfile and `npm ci`, making server build reproducible. Exact locked Docker build and server E2E run `38631738581` SUCCESS.
+- `b1e8fb837f09b6c3128bd7b88f453a7b7c70d761`: corrected runbook lockfile status.
+- `535457e7bfd4e6f68da82987cb3ad2da8b4ab785`: dedicated CI step now actually BOOTS built Docker image against ephemeral PostgreSQL 16 under `--network host`, with remote bind `0.0.0.0` requiring CI bearer, checks `/health` 200, `/status` 401 without auth / 200 with auth, PAPER_ONLY and `scanEnabled:false`. GitHub Actions `portable-paper-standalone-http-qa` run **`38631878587`**, job **`116085281538` SUCCESS**; log emitted **`PORTABLE_PAPER_CONTAINER_SMOKE=PASS`**, plus **2/2** server and **8/8** Binance egress fixture tests. No owner or real trade data were involved.
+- `2dbe643e970eca55f0f189a62a090114981fb59b`: updated runbook to record successful container boot/read-only API.
+- On code commit `535457e7...`, `portable-paper-runtime-qa` SUCCESS `38631888863`, `terminal-ci` SUCCESS `38631888844`, `level-flow-ci` SUCCESS `38631888760`, standalone container QA SUCCESS `38631888791`. At inspection `portable-paper-postgres-qa` `38631888793` remained in progress, `level-flow-logic-audit` `38631888838` pending; do not claim either PASS before explicit check.
+
+### Deliberate skeptical release verdict
+
+**Implemented and tested:** independent read-only Node process + protected state API, PostgreSQL persistence after process restart, isolated ledger access, fail-closed corruption/auth, locked and runnable non-root Docker image; a *tool* to check public Binance USD-M egress. Previously established portable core 15m/1m PAPER V5-only state machine and Postgres CAS remain intact.
+
+**NOT VERIFIED / NOT DONE:** real market Binance USD-M from target Railway region (prior AppDeploy/GitHub hosted HTTP451), real V5 READY→PAPER OPEN→1m CLOSE, stable autonomous scheduler/process monitoring live data 24/7, actual UI→new server API integration, PostgreSQL backup/restore disaster drill, protected target platform deployment, migration of actual owner's journal, or AppDeploy/GitHub source reconciliation. No user data touched, no trading API keys or real orders. **Do NOT label this a working autonomous trading system.**
+
+**Next P0:** wire isolated **PAPER-only** server strategy V5 and strictly validated USD-M closed-candle/minute evidence through injectable adapters, keep scheduler **off by default** until legitimate region probe 200 and full multi-TF checks. Add restart/endurance/incomplete-history tests and pg_dump/pg_restore rehearsal. No Railway deployment before gate.
+
+---
+
+
 ## 2026-10-14 — PORTABILITY P1: platform-free PAPER runtime + PostgreSQL CAS
 
 **Owner decision:** AppDeploy is a temporary UI/test host. Authenticated cross-account AppDeploy cloud backup E2E is DEFERRED, not silently passed. Mandatory data-recovery rehearsal will instead target PostgreSQL at the final hosting platform. The repo PR #88 stays DRAFT. V5 is unchanged and live orders remain forbidden.
