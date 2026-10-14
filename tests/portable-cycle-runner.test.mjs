@@ -109,8 +109,8 @@ test('existing PAPER position is checked before next signal, STOP wins',async()=
     symbol:'BTCUSDT',side:'long',
     confirmedCloseAt:CLOSE-900_000,
     stop:98,target:106,
-  },{symbol:'BTCUSDT',bid:99.99,ask:100,capturedAt:CLOSE-2*MIN},
-  CLOSE-2*MIN);
+  },{symbol:'BTCUSDT',bid:99.99,ask:100,capturedAt:CLOSE-7*MIN},
+  CLOSE-7*MIN);
   assert.equal(opened.kind,'OPENED');
   const h=harness({now:CLOSE+2_000,open:opened.position});
   const out=await createPortableCycleRunner(h.ports,['BTCUSDT']).runOnce();
