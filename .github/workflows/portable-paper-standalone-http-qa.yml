@@ -53,6 +53,18 @@ jobs:
         run: node --experimental-strip-types --test tests/binance-usdm-egress.test.mjs
       - name: Build standalone Docker image without deployment
         run: docker build --file deployment/portable-paper/Dockerfile --tag smoke-portable-paper:test .
+      - name: Ensure V5 PAPER worker cannot start by default
+        run: |
+          set -eu
+          set +e
+          OUTPUT=$(docker run --rm --network none smoke-portable-paper:test \
+            node --experimental-strip-types \
+            deployment/portable-paper/worker-once.mjs 2>&1)
+          EXIT=$?
+          set -e
+          test "$EXIT" = "2"
+          printf '%s\n' "$OUTPUT" | grep -q 'EXPLICIT_WORKER_AND_REGIONAL_EGRESS_GATES_REQUIRED'
+          echo 'PORTABLE_PAPER_WORKER_DEFAULT_OFF=PASS'
       - name: Boot Docker image with isolated PostgreSQL and test read-only API
         env:
           SMOKE_PAPER_READ_TOKEN: ci_fixture_authorization_token_1234567890abcdef
