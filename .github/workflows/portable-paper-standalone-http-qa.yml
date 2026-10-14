@@ -6,6 +6,8 @@ on:
       - 'deployment/portable-paper/**'
       - 'core/paper/postgres-paper-store.ts'
       - 'deployment/postgres/0001_paper_state.sql'
+      - 'core/market/binance-usdm-egress.ts'
+      - 'tests/binance-usdm-egress.test.mjs'
       - '.github/workflows/portable-paper-standalone-http-qa.yml'
   pull_request:
     paths:
@@ -47,3 +49,5 @@ jobs:
         run: npm install --prefix deployment/portable-paper --ignore-scripts --no-audit --no-fund
       - name: Verify real PostgreSQL read-only server, fail-close, crash recovery
         run: node --experimental-strip-types --test deployment/portable-paper/tests/server.integration.mjs
+      - name: Verify fail-closed Binance USD-M regional probe with fixtures
+        run: node --experimental-strip-types --test tests/binance-usdm-egress.test.mjs
