@@ -23,7 +23,7 @@ try {
     if(!card)return null;
     const results=[...card.querySelectorAll('strong')]
       .map(x=>x.textContent?.trim()??'')
-      .filter(x=>/USDT.*(1w|1d|4h|15m|5m|BOOK).*\\b(PASS|ERROR)\\b/.test(x));
+      .filter(x=>/USDT.*(1w|1d|4h|15m|5m|BOOK).*\b(PASS|ERROR)\b/.test(x));
     const status=card.querySelector('[role=status]')?.textContent?.trim()??'';
     return {count:results.length,pass:results.filter(x=>x.endsWith('PASS')).length,
       failed:results.filter(x=>x.endsWith('ERROR')).length,status};
