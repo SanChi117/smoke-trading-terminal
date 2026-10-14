@@ -51,3 +51,5 @@ jobs:
         run: node --experimental-strip-types --test deployment/portable-paper/tests/server.integration.mjs
       - name: Verify fail-closed Binance USD-M regional probe with fixtures
         run: node --experimental-strip-types --test tests/binance-usdm-egress.test.mjs
+      - name: Build standalone Docker image without deployment
+        run: docker build --file deployment/portable-paper/Dockerfile --tag smoke-portable-paper:test .
