@@ -1,0 +1,24 @@
+name: binance-usdm-readonly-probe
+
+on:
+  push:
+    paths:
+      - scripts/probe_binance_usdm_public.mjs
+      - core/market/pilot-feed-audit.ts
+      - .github/workflows/binance-usdm-readonly-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exchange-data-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Check public Binance futures OHLCV and book (never place orders)
+        run: node --experimental-strip-types scripts/probe_binance_usdm_public.mjs
