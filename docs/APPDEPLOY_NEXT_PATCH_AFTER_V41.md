@@ -1,4 +1,8 @@
-# AppDeploy v41 → next safety release (pending credits)
+# AppDeploy v41 → v42 patch — COMPLETE
+
+Deployed on 2026-10-14: **v42 snapshot `1791992968913`, status `ready`**. Published files confirmed by source readback: `core/paper/paper-pilot-state.ts`, `core/paper/paper-backup.ts`, and `tests/tests.txt`. AppDeploy QA frontend/backend/network error arrays were empty. v41 remains available for rollback.
+
+**Historical plan below** describes what was proposed before v42, when the daily AppDeploy credit quota blocked deployments. The quota later reset, and the targeted patch was published. A production build and source readback are **not** real authenticated browser E2E.
 
 Updated 2026-10-14. **NOT YET DEPLOYED. DO NOT MERGE OR REPLACE THE WHOLE SITE.**
 
