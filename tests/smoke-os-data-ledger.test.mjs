@@ -200,7 +200,7 @@ test("PILOT diagnostic rejects gaps, unconfirmed-only data, forged book and inva
   assert.throws(()=>validateRecentBinanceKlines('BTCUSDT','15m',
     [mk(-3),mk(-1),mk(0)],now),/PILOT_FEED_MISSING_OR_DUPLICATE/);
   assert.throws(()=>validateRecentBinanceKlines('BTCUSDT','15m',
-    [mk(0),mk(1),mk(2)],now),/PILOT_FEED_INSUFFICIENT_CLOSED/);
+    [mk(0),mk(1),mk(2)],now),/PILOT_FEED_FUTURE_CANDLE/);
   assert.throws(()=>validateRecentBinanceKlines('BTCUSDT','15m',
     valid.map((r,i)=>i===1?r.map((v,j)=>j===2?'80':v):r),now),
     /PILOT_FEED_INVALID_CANDLE/);
