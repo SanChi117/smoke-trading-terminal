@@ -1,7 +1,7 @@
 # SMOKE release gate before changing entry methodology and importing to Railway
 
 Status: NOT RELEASE-READY — 2026-10-14.
-Reference: AppDeploy published v42 (1791992968913); GitHub draft PR #88 contains additional inactive pure input validation and test probes. Published AppDeploy source and GitHub Next/Vinext remain divergent.
+Reference: AppDeploy published v44 (1791995185936); GitHub draft PR #88 contains additional inactive pure input validation and test probes. Published AppDeploy source and GitHub Next/Vinext remain divergent.
 
 ## Scope and invariant
 
@@ -24,12 +24,12 @@ Evidence must be tracked separately:
 | 15m independent open-PAPER minute monitoring and bounded 7-day pagination | AppDeploy v42 source + GitHub tests | DEPLOYED, E2E UNVERIFIED |
 | Mature position stops repeating entry-minute lookups | AppDeploy v42 source and GitHub cursor regression | DEPLOYED, CI PASS |
 | Cross-tab conflict detection and readback rollback | AppDeploy v38+ source, deterministic helper tests | DEPLOYED, manual E2E UNVERIFIED |
-| Local backup upload/preview/confirm | AppDeploy v36+ source | DEPLOYED, manual E2E UNVERIFIED |
+| Local JSON backup export/preview/confirm/reload | AppDeploy v44 + GitHub browser run 38607247143 | DEPLOYED; ANONYMOUS EMPTY-LEDGER BROWSER E2E PASS; REAL JOURNAL RESTORE UNVERIFIED |
 | User-isolated AppDeploy cloud copy API | AppDeploy v40 source | DEPLOYED, authenticated E2E UNVERIFIED |
 | Integrity of modeled gross/net PnL and bounded journal totals during backup import | AppDeploy v42 source + GitHub pure-core tests | DEPLOYED, manual E2E UNVERIFIED |
 | Binance kline normalizer rejects malformed OHLCV, mixed instruments, wrong weekly/month boundaries | GitHub shared market-data normalizer + deterministic tests | GITHUB CODED, NOT APPDEPLOY-DEPLOYED |
 | Future module closed multi-timeframe gate rejects gapped, stale and partial candles | GitHub core/market/strategy-candles.ts (not wired into V5) | GITHUB CODED, NOT ACTIVE |
-| Binance USD-M direct browser access across symbols/TFs | AppDeploy v44 read-only 30-check UI | DEPLOYED; GitHub-runner BROWSER E2E PASS (data HTTP 451), USER-BROWSER E2E UNVERIFIED |
+| Binance USD-M direct browser access across symbols/TFs | AppDeploy v44 read-only 30-check UI | DEPLOYED; GitHub runner E2E PASS (data HTTP 451); OPERATOR REPORTS NO ERRORS IN OWN BROWSER, per-request log not retrieved |
 | Server-side autonomous PAPER and scheduler | AppDeploy server config explicitly paused due to HTTP 451; browser manual workflow | BLOCKED |
 | 24/7 durable journal with transactional backend / recovery | Not implemented or exercised for the present browser research engine | BLOCKED |
 | Portable Railway importer and full updated UI export | AppDeploy-vs-GitHub reconciliation incomplete | BLOCKED |
@@ -113,3 +113,10 @@ A green CI check proves only the tested code on a commit. AppDeploy 'ready' only
 - Before and after all button interactions, headless browser localStorage PAPER journal bytes were identical. Neither test injects READY, opens PAPER trades or sends real broker orders.
 - GitHub terminal-ci and level-flow-ci passed on UI+test code commit 56d5522b01f0aa98b2875c34a3d97b5e324cf434. Re-check CI on latest docs-only head before merge.
 - Still required for autonomy/release: end-user browser data audit, real signal PAPER READY->OPEN->CLOSE, authenticated AppDeploy backup E2E with a real account and separate-user isolation, chart/scanner/backtest mobile acceptance, and a lawful Binance-accessible 24/7 service host.
+
+## 2026-10-14 — Local JSON restore actual published-browser E2E
+
+- GitHub Actions `paper-backup-browser-e2e`, run `38607247143`, completed SUCCESS on published v44.
+- In an isolated anonymous Chromium profile, exported the baseline PAPER JSON, rejected malformed JSON and forged `executionAuthorized:true`, previewed valid data without writing, canceled safely, explicitly confirmed restore, and verified bytes persisted after reload. Anonymous cloud backup action did not claim to save; no PAPER order or position was created.
+- Scope of evidence: **empty baseline test journal only**, not actual user position PnL or signed-in AppDeploy database restore. Those remain unverified pending a real authorized account session and controlled backup/readback drill.
+- The user independently reported that the built-in Binance browser feed check had no errors. This is an operator report; per-item pass/fail logs were not captured by our tools. Hosted GitHub and AppDeploy server Binance USD-M access restrictions remain independent blockers for unattended execution.
