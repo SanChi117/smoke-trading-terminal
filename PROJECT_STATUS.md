@@ -1,16 +1,17 @@
 # SMOKE Trading OS — Project Status
 
-## Latest checkpoint — 2026-10-14 (AppDeploy v42 + external shell probe)
+## Latest checkpoint — 2026-10-14 (AppDeploy v43 + server HTTP 451 verified)
 
-**Phase: stable PAPER infrastructure / new entry methodology deferred. Overall: PARTIAL — NOT RELEASE READY.** Existing V5 remains the only active strategy; live Binance orders remain disabled.
+**Overall: PARTIAL / NOT RELEASE READY.** The current V5 strategy is unchanged; real Binance order execution is disabled.
 
-- **Published AppDeploy v42** `1791992968913`: status `ready`, QA frontend/backend/network errors zero at readback. Both deployed `core/paper/paper-backup.ts` and `core/paper/paper-pilot-state.ts` were verified in the published source. Manual browser PILOT remains active; legacy autonomous server scanner is paused owing to Binance Futures HTTP 451 from this host.
-- **v42 fixes delivered**: bounded same-bar PAPER retry after a temporary quote/strategy data outage (without consuming `lastCycle` or weakening maxSignalAgeMs) and mathematical integrity checks on PAPER import (risk/RR, gross/net fees, total PnL where bounded history is complete). Existing AppDeploy frontend, auth API, cloud backup routes, state schema and active V5 were not changed. Old v41 `1791927320801` remains available for rollback.
-- **GitHub candidate PR #88**: `fix/paper-minute-monitor-and-strategy-slot-20261013`. Both `terminal-ci` and `level-flow-ci` passed at last functional head `81f4733303c5bad62de2616f971d237e76f8018f`. Latest public-probe workflow and docs commits require per-head CI status checks prior to merge.
-- **External public smoke probe** ran from GitHub Actions and confirmed published root URL returns HTTP 200 and HTML. Requests to the same public host at `/api/pilot/browser-backups` and `/api/pilot/paper` return the SPA HTML shell (also 200), **not an API JSON response**. This is not proof of anonymous access to protected data; AppDeploy SDK `api` transport authentication remains **UNVERIFIED** by the public-host probe. Keep the authenticated browser round-trip as P0 acceptance.
-- **New method input preflight**: a GitHub-only, inactive 1w/1d/4h/15m/5m closed-candle gate and Binance kline data validation exist, with deterministic tests. Neither is wired into current AppDeploy V5.
-- **Railway import** remains deferred until new entry-method integration, end-to-end PAPER acceptance, and reconciliation of divergent AppDeploy Vite vs GitHub Next/Vinext sources. Never use the obsolete HYBRID v2 installer as the new terminal runtime.
-- **Release checks**: see [SMOKE_RELEASE_GATE_BEFORE_RAILWAY.md](docs/SMOKE_RELEASE_GATE_BEFORE_RAILWAY.md). Browser manual full READY→OPEN→CLOSE, anonymous/auth account backup isolation, chart/backtest/mobile and durable 24/7 host-driven PAPER still **UNVERIFIED**.
+- **AppDeploy published v43** (snapshot 1791994628835): ready, frontend/backend/network QA reported no errors. A separate PILOT market-data diagnostic now checks BTC, ETH, SOL, LINK and SUI USDT perpetuals on 1w/1d/4h/15m/5m, plus bid/ask, all read-only and without PAPER journal writes.
+- **Offline market evidence validation in GitHub**: core/market/pilot-feed-audit.ts has deterministic regression tests for closed contiguous candles, quote integrity, stale/partial evidence and cross-interval isolation. New V5 input logic and live trading are not activated.
+- **Cloud-server Binance blocker proven**: GitHub Actions binance-usdm-readonly-probe run 38596941787 on 2026-10-14 found 0/30 successful, 30/30 HTTP 451 on all tested public USD-M REST routes. Prior AppDeploy backend also returned HTTP 451. Neither tested cloud environment is verified as a suitable continuous Binance scanner. The actual user browser may differ; v43 UI check awaits a manual click.
+- **Published PAPER reliability** remains v42+ (signal retry on transient failure and financial consistency of JSON restore), now retained unchanged within v43. V42 snapshot 1791992968913 and v41 snapshot 1791927320801 remain rollback candidates.
+- **AppDeploy public-host probe** confirmed a 200 HTML shell. The host's /api/pilot/* GET routes returned SPA HTML fallback rather than backend JSON; no authenticated API access or ownership isolation was proven by that result.
+- **GitHub draft PR #88** contains code/tests/docs in branch fix/paper-minute-monitor-and-strategy-slot-20261013, including read-only diagnostics and external host probe. Verify CI status at the exact most recent head before merge.
+- **P0 still missing**: genuine user-browser USD-M feed checks, full PAPER READY→OPEN→CLOSE, authorized backup restore and cross-user isolation, chart/backtest/mobile QA, durable autonomous worker on an exchange-permitted host, source-runtime reconciliation.
+- **Release / Railway gate**: docs/SMOKE_RELEASE_GATE_BEFORE_RAILWAY.md. Before deploying a worker in Railway, verify lawful real-time Binance Futures data access in the precise candidate service region; do not substitute another exchange's candles without explicit method redesign.
 
 ---
 
