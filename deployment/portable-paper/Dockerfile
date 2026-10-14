@@ -7,7 +7,8 @@ ENV NODE_ENV=production
 WORKDIR /srv
 
 COPY deployment/portable-paper/package.json ./deployment/portable-paper/package.json
-RUN npm install --prefix ./deployment/portable-paper \
+COPY deployment/portable-paper/package-lock.json ./deployment/portable-paper/package-lock.json
+RUN npm ci --prefix ./deployment/portable-paper \
       --omit=dev --ignore-scripts --no-audit --no-fund
 
 COPY core/paper/ ./core/paper/
