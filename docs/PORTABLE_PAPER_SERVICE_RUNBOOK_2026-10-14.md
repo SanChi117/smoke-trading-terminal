@@ -62,7 +62,7 @@ node --experimental-strip-types deployment/portable-paper/market-egress-probe.mj
 - [ ] Создан и испытан worker scheduler с проверенным публичным USD-M feed, минутным сопровождением открытых PAPER позиций и 15m V5; запрещать ордера.
 - [ ] Подтверждены Binance USD-M HTTP 200 в выбранной разрешённой реальной облачной среде и непрерывность 5 TF + 1m.
 - [ ] Надёжная схема восстановления Postgres `pg_dump` → `pg_restore`, ежедневные backup и alarms на пропуски/задержки.
-- [ ] Зафиксирован npm lockfile изолированного пакета сервера для воспроизводимого production build; сейчас прямой `pg` pinned, транзитивные зависимости берутся через npm install и **не зафиксированы**.
+- [x] Зафиксирован отдельный `deployment/portable-paper/package-lock.json` (npm lockfileVersion 3; `pg@8.16.3` и транзитивные зависимости), а CI и Dockerfile переключены на `npm ci`. До production всё ещё нужны контрольные green image-build и software supply-chain audit.
 - [ ] Сверка исходников UI AppDeploy v47 ↔ GitHub (Vite vs Next/Vinext), обратный план, обновление read-only UI с новым API.
 - [ ] Изоляция тестовой и рабочей PostgreSQL, хранение секретов в platform secrets, надёжные probes и наблюдаемость, 24/7 soak.
 - [ ] Только после вышеперечисленного — управляемый Railway cutover. Не включать реальные ордера.
