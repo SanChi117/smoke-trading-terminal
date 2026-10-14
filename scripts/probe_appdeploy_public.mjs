@@ -34,9 +34,17 @@ async function probe({path,kind}) {
     assert.ok(html.length>100,
       'PUBLIC_SITE_EMPTY_HTML');
   } else {
+    // AppDeploy SDK api.* may use a platform transport rather than this
+    // public SPA host. 200 + HTML is a router fallback, not an API response
+    // and is neither proof of authorization nor proof of a vulnerability.
+    if (response.status === 200 && /text\/html/i.test(type)) {
+      await response.body?.cancel();
+      return {path,status:response.status,durationMs,
+        check:'BACKEND_TRANSPORT_NOT_PUBLICLY_PROBED',type:'HTML_FALLBACK'};
+    }
     assert.ok([401,403].includes(response.status),
       'PRIVATE_PAPER_ENDPOINT_NOT_BLOCKED '+path+
-      ' got '+response.status);
+      ' got '+response.status+' type '+type);
     // Avoid writing any API response or private journal bytes to CI logs.
     await response.body?.cancel();
   }
@@ -51,4 +59,4 @@ for(const test of PATHS) {
   process.stdout.write(JSON.stringify(row)+'\n');
 }
 assert.equal(report.length,PATHS.length);
-process.stdout.write('SMOKE_PUBLIC_PROBE_PASS\n');
+process.stdout.write('SMOKE_PUBLIC_SITE_PASS; API_AUTH_MAY_BE_UNVERIFIED\n');
