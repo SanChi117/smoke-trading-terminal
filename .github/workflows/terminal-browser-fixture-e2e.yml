@@ -1,0 +1,27 @@
+name: terminal-browser-fixture-e2e
+
+on:
+  push:
+    paths:
+      - scripts/terminal_browser_fixture_e2e.mjs
+      - .github/workflows/terminal-browser-fixture-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-chart-scanner-backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Prepare isolated Chromium
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Exercise published terminal with controlled historical fixtures
+        run: node scripts/terminal_browser_fixture_e2e.mjs
