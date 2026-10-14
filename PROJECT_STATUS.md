@@ -1,5 +1,36 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-14 — ADVERSARIAL VERIFICATION P4: real GitHub egress HTTP 451 + FIXED unfinished higher-TF candle bug
+
+**User request:** "проввевряй" — independently verify existing implementation, refute unjustified readiness, test REAL Binance USD-M public access, and record reproducible evidence. This cycle did NOT deploy AppDeploy, Railway, trading engine, or anything to user's account. PR #88 must remain DRAFT; strategy V5 untouched; PAPER-only.
+
+### Initial baseline verification (before any edits)
+- Checked GitHub HEAD `40c5063e83b02ce5ea67a28c2040ad50c57a14ca`: **all seven pull-request CI checks SUCCESS**: `terminal-ci`, `level-flow-ci`, `level-flow-logic-audit`, `portable-paper-runtime-qa`, `portable-paper-postgres-qa`, `portable-paper-standalone-http-qa`, `portable-v5-usdm-fixture-qa`.
+- Checked deployed AppDeploy app `smoke-trading-terminal-0kl792`: v47 source snapshot `1792003179327`, `ready`, no frontend/backend errors reported. Does NOT demonstrate actual Binance egress or readiness of GitHub portable worker.
+- Real target Railway deployment / Railway region and test DB **not connected**; therefore any claim of accessible USD-M from Railway would be fabricated.
+
+### Defect found by source-level adversarial audit (impact: V5 would be systematically blocked midweek)
+- Previously `core/market/binance-usdm-portable.ts` sent the same `endTime=15mCloseAt-1` for 1w, 1d, 4h, 15m and 5m. For 1w/1d/4h when the 15m candle closed inside a still-open higher-timeframe bar, Binance could include the **unfinished higher-TF candle**, which the strict closed-candle gate would then reject. A synthetic-fixture test originally returned only closed bars regardless of endTime, so it missed this; such tests did not prove correct live API behaviour.
+- **FIX:** `675154ad509371020ab40dffa18cffe3ac76ff93`: `latestClosedUsdMKlineEnd(closeAt,frame)` computes a separate last fully completed bar cutoff for each interval. 1w anchored UTC Monday, 1d at UTC midnight, 4h at UTC 00/04/08/12/16/20, 15m & 5m at the signal close. Direct Binance public GET remains original official host; no V5 logic changed.
+- **TEST FIX:** `51cd5838c3c39b74df2491f815bf1c3b839b1abf`: fixture now emulates Binance returning candles by **inclusive endTime / candle-open ordering** rather than pre-filtering to closed data. New test verifies 1w/1d/4h UTC cutoff, Monday rollover, intraday boundaries, and rejects wrong 15m close time. **New fixture suite 9/9 PASS**, runner 6/6, portable PAPER core 11/11; total **26/26 PASS**, strict TypeScript PASS in `portable-v5-usdm-fixture-qa` run **`38636460991`**, job **`116100771417`**, tested source head `2e02ddb8...`.
+- The first intermediate code-only commit `675154ad...` produced failing old mock assertions (mock wrongly expected global `endTime=15mClose-1`); this was fixed by updating expected semantics in `51cd5838...`. Explicitly do not regard intermediate commit as verified.
+
+### ACTUAL regional public Binance USD-M access verification
+- **Diagnostic-only workflow:** `2e02ddb8a3ecca88f854dd34c1b6ac06861081b0` created `.github/workflows/binance-usdm-live-egress-diagnostic.yml`. On official Ubuntu GitHub Actions host it invoked existing `deployment/portable-paper/market-egress-probe.mjs` via direct public `https://fapi.binance.com` GET. No Binance keys, no trading endpoints, no user DB, no proxy, no georestriction bypass.
+- **REAL result:** run **`38636454929`**, job **`116100742676`**. Exact JSON result:
+  `{"event":"PORTABLE_BINANCE_USDM_EGRESS_PROBE","ok":false,"market":"BINANCE_USDM","symbol":"BTCUSDT","checks":[{"name":"time","ok":false,"code":"HTTP_451"}],"errorCode":"TIME_HTTP_451","tradingAuthorized":false}`
+- The underlying probe returned exit code **1**, logged `GITHUB_HOST_PUBLIC_USDM_PROBE_EXIT=1`. The diagnostic Actions job itself reports `SUCCESS` **only because it is designed as evidence collection** with a nonfailing summary step. **This is NOT a Binance connectivity PASS.** `/fapi/v1/time` HTTP 451 prevents any further USD-M candles, live V5 PAPER cycle or trading activation from this GitHub host.
+- **Scope:** HTTP 451 confirmed from **GitHub Actions runner**, not independently from Railway or from the existing AppDeploy v47 during this cycle. Do not falsely infer that all hosting regions are blocked.
+- Updated/latest GitHub pull-request code checks on commit `2e02ddb8...`: `portable-v5-usdm-fixture-qa` SUCCESS `38636460991`, `portable-paper-runtime-qa` SUCCESS `38636461097`, `terminal-ci` SUCCESS `38636461552`, `level-flow-ci` SUCCESS `38636461277`, `portable-paper-standalone-http-qa` SUCCESS `38636461211`. At recording time `portable-paper-postgres-qa` `38636461016` and `level-flow-logic-audit` `38636461164` still IN PROGRESS; DO NOT mark success before verifying.
+
+### Verdict and next gate
+- **Fixed and verified** higher-timeframe historical endTime source error with robust adversarial fixtures. Existing PAPER-only source, Docker and PG guards retain previous successful checks; no user journal touched or broker API called.
+- **Not ready:** real public USD-M data from GitHub environment is actually **BLOCKED** (451); no actual permitted Railway region tested; no real market V5→PAPER life cycle; no deployed 24×7 loop; no authentic backup/restore. Cannot enable worker or authorize auto-investing.
+- Next release gate: establish selected permitted host/region, run the SAME diagnostic from inside that host first. If it returns 451, stop and do not route around restrictions. Only on legitimate `ok:true` evaluate REAL 5TF freshness and isolated disposable PostgreSQL PAPER-only trial. Then restore drill and 24×7 scheduler verification, after owner authorizes any actual move.
+
+---
+
+
 ## 2026-10-14 — PORTABILITY P3: actual unchanged V5 wired into portable read-only USD-M adapter, PAPER one-shot runner
 
 **Scope:** Owner directed continuation of migration. GitHub branch `fix/paper-minute-monitor-and-strategy-slot-20261013`, PR #88 OPEN/DRAFT. No AppDeploy deploy; v47 `1792003179327` remains `ready` / reported no frontend or backend errors. No real orders, no owner records, no secrets, no host-region workaround. Real Binance Futures from GitHub/AppDeploy previously HTTP 451.
