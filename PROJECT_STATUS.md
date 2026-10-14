@@ -1,5 +1,13 @@
 # SMOKE Trading OS — Project Status
 
+## Cloud backup preview UI issue — operator screenshot 2026-10-14
+
+- Operator screenshot after selecting `Проверить копию` displays server success message `Копия AppDeploy проверена. Для замены локального журнала потребуется отдельное подтверждение.` This supports successful signed-in backup retrieval and client-side validation.
+- Expected amber bordered `Проверенная копия: ...` preview with `Подтвердить восстановление` and `Отмена` buttons is not visible in the screenshot between the cloud copies row and the journal helper text. Source `PilotBrowserPaper.tsx` contains the conditional preview section driven by `restorePreview` state; the display inconsistency has NOT been reproduced or resolved. Do not claim preview/restore E2E PASS.
+- Snapshot remains 5 FLAT positions, zero open/closed and zero net PnL. No evidence of any local backup restoration or journal change.
+- P0 follow-up: rerun `Проверить копию` and inspect the preview area, use a real authorized UI E2E in an isolated profile before any destructive restore; preserve local journal and real-order-disabled state.
+
+---
 ## Operator screenshot checkpoint — 2026-10-14 20:45 local
 
 - Owner-provided browser screenshot confirms signed-in AppDeploy PILOT (earlier screenshot showed 'Выйти'), and a visible owner cloud-backup list entry dated 2026-10-14 20:45:39, with 0 closed trades. This is evidence of save/list UI success in the user's session, not a verified raw database transaction or cross-account authorization test.
