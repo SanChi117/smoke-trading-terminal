@@ -1,0 +1,37 @@
+name: market-kline-integrity-qa
+
+on:
+  push:
+    paths:
+      - 'core/market/binance-kline-page.ts'
+      - 'app/lib/binance-level-client.ts'
+      - 'tests/binance-kline-page.test.mjs'
+      - 'tests/binance-level-client.test.mjs'
+      - '.github/workflows/market-kline-integrity-qa.yml'
+  pull_request:
+    paths:
+      - 'core/market/binance-kline-page.ts'
+      - 'app/lib/binance-level-client.ts'
+      - 'tests/binance-kline-page.test.mjs'
+      - 'tests/binance-level-client.test.mjs'
+      - '.github/workflows/market-kline-integrity-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  strict-binance-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+          cache: npm
+      - run: npm ci
+      - name: Verify real Binance response semantics with mocked public USD-M candles
+        run: node --experimental-strip-types --test tests/binance-kline-page.test.mjs tests/binance-level-client.test.mjs
+      - name: Typecheck strict standalone feed validator
+        run: npx tsc --noEmit --skipLibCheck --target es2022 --module nodenext --moduleResolution nodenext --strict --allowImportingTsExtensions core/market/binance-kline-page.ts
