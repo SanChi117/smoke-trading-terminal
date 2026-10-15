@@ -91,6 +91,16 @@ try{
     'RESTORE_DIFFERS_FROM_EXPORTED_JOURNAL');
   await page.reload({waitUntil:'domcontentloaded',timeout:30_000});
   assert.equal(await peek(),restored,'RELOAD_LOST_PAPER_STATE');
+  // A second tab in the SAME browser profile must read exactly the same
+  // saved PAPER snapshot; no synthetic position is created.
+  const secondTab=await page.context().newPage();
+  try {
+    await secondTab.goto(SITE,{waitUntil:'domcontentloaded',timeout:30_000});
+    const crossTab=await secondTab.evaluate(key=>localStorage.getItem(key),KEY);
+    assert.equal(crossTab,restored,'SECOND_TAB_PAPER_SNAPSHOT_MISMATCH');
+  }finally{
+    await secondTab.close();
+  }
 
   // Restore downgrade protection: an older backup must NOT overwrite a newer
   // revision in a disposable profile. No market signals or orders are inserted.
@@ -121,7 +131,7 @@ try{
     e2e:'PASS',phase:'PAPER_LOCAL_BACKUP_RESTORE',
     exportedJson:true,corruptRejected:true,forgedRejected:true,forgedPnlRejected:true,
     canceledWithoutChange:true,explicitlyConfirmed:true,
-    reloadPreserved:true,olderRevisionRestoreBlocked:true,anonymousCloudRefused:true,
+    reloadPreserved:true,crossTabReadBack:true,olderRevisionRestoreBlocked:true,anonymousCloudRefused:true,
     realOrders:false,syntheticJournalUnaffected:true,
   }));
 }finally{
