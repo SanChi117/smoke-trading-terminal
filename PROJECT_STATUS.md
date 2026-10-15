@@ -1,5 +1,36 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-15 — P10 PAPER ACCOUNTING ADVERSARIAL: forged fees/R rejected; non-empty browser backup restored
+
+**User instruction:** "провверяй": test the remaining detailed release gates: non-empty PAPER restore, ambiguous entry-minute and independent LONG/SHORT fee and R accounting. P10 is fully PAPER/isolated-fixture ONLY; no live orders, no owner account state and no V5 edits. Previous SHA `3a6226d62374fd1490d14446820a9d76ac8e5bef` had **8/8 main GitHub CI workflows SUCCESS**. AppDeploy published Vite snapshot `1792067122969` started P10 `ready`.
+
+### Failing-first negative accounting evidence
+- Added `tests/paper-accounting-adversarial.test.mjs` at GitHub commit `6786f5d1dc4dd94ecfa7fdd0921dfba386468c79` and wired into `portable-paper-runtime-qa` at `a1c0af9f3856f355ffe81a063e9f703c9b58f2d7`.
+- Independent numerical accounting for all **LONG/SHORT × STOP/TARGET** paths verifies spread-side quote, adverse entry/exit slippage, max notional/risk quantity, gross PnL, dual-sided taker commissions, net PnL, realized R.
+- Ambiguous partial entry-minute touches at SL or TP for **both** directions correctly report `PAPER_ENTRY_MINUTE_TOUCH_AMBIGUOUS` HALT; a clean entry minute allows monitoring, a missing entry minute HALTs.
+- Adversarial packet: forge `feesUsdt` and adjust net PnL, realized R and lifetime PnL to remain internally consistent; and independently forge R magnitude while retaining its correct sign.
+- **Confirmed RED:** `portable-paper-runtime-qa` run `38778674186` job `116572853758` FAILED **13/15 tests**, exactly two expected new negative tests. Source `core/paper/paper-backup.ts` previously only required `net=gross-fees` and matching sign of R; no independent commission value or R magnitude verification.
+
+### Fix + repeat verification
+- GitHub `839ad7701dafec1226498db7b2d3e589fb1570a4`: tightened `parseLocalPaperBackup` closed-trade checks. For frozen PAPER V1 policy assert `feesUsdt ≈ (entry + exit) × quantity × PILOT_PAPER_POLICY.takerFeeRate`. Derive risk `abs(entry-stop) × quantity`, require `realizedR ≈ netPnlUsdt / risk`. Existing gross and net consistency, sign, symbol, timestamps, receipts and realized lifetime totals retained. Pure validation only; no trading or V5 logic changes.
+- **Confirmed GREEN:** `portable-paper-runtime-qa` run `38778831988` job `116573402154` SUCCESS: **15/15** tests PASS including new fraud rejections; standalone strict TS check SUCCESS.
+- Applied equivalent code to **actual published AppDeploy Vite** `core/paper/paper-backup.ts`, updated user-visible `tests/tests.txt`. AppDeploy new snapshot **`1792085859614`** verified `ready` with empty frontend/backend errors and QA network errors. Official live URL `https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/`. This updates Vite source itself without overwriting it with GitHub Next/Vinext.
+- Important model caveat: validation is against the existing **fixed** V1 PAPER fee policy, NOT a current dynamic Binance fee schedule or proof of a real fill. Original existing V1 backups were independently accepted by regression tests.
+
+### Non-empty public-site browser full backup/restore audit
+- `18f8a9e79703e55e429afa6c728fa8e31454afe9`: created `scripts/paper_nonempty_restore_browser_e2e.mjs` using production pure PAPER open, closed-minute settlement and receipt code. Generated an **anonymous synthetic test JSON** with 5 symbols: one actual-in-structure simulated OPEN (ETHUSDT), one closed simulated TARGET (BTCUSDT), 3 event receipts, rest flat. It verifies the packet passes pure strict validation prior to browser upload.
+- `8c3d541e6a3e749e206ee716e57cfd17d7c8c19b`: extended existing `paper-backup-browser-e2e` workflow to syntax-check and execute the new browser import/export test. No scheduling, broker calls or auto-paper activation.
+- **Confirmed real published Vite UI Chromium E2E PASS**: Actions run **`38779141631`**, job **`116574487270`** SUCCESS with 4 separate phase logs: `PAPER_LOCAL_BACKUP_RESTORE`, `PAPER_OPEN_RELOAD_MINUTE_IDEMPOTENCY`, `PAPER_GAP_RECOVERY_CROSSTAB_RACE`, and newly `PAPER_NONEMPTY_BROWSER_BACKUP_RESTORE`. New test confirms user-controlled non-empty JSON preview, explicit `confirm`, exact localStorage restored records/trades/3 receipts, "Проверить сохранение" PASS, full-page refresh persistence, roundtrip JSON export, and negative forged fee + forged R import rejection without touching valid bytes.
+- Browser runs in a separate ephemeral **unauthenticated Chromium profile** and does not request real Binance data; network is isolated, no owner user data or real orders touched. It confirms the UI's actual restore flow with *synthetic* non-empty portfolio, not that real exchange orders or genuine signals occurred.
+
+### Caveats / unresolved gates
+- LocalStorage check-before-write is NOT atomic CAS against every possible concurrent interleaving. Existing staged second-tab conflict E2E passed only the tested overlap. Portable Postgres CAS remains the intended real multi-worker store.
+- Neither historical V5 PnL nor PAPER model is proof of live fills/profitability. No real USD-M market egress validation on proposed host (GitHub-host HTTP 451), 24/7 worker or production PG disaster recovery in P10.
+- Future versions with a different PAPER fee policy must migrate schema rather than reinterpret V1 backup fees against a changed policy; preserve frozen V1 semantics.
+
+---
+
+
 ## 2026-10-15 — P9 CRASH-SAFE PAPER ACCOUNTING: reject forged trade after full reload
 
 **Context:** P8 published Chromium regressions found correct missing-minute HALT/recovery and stale-tab isolation. Continued adversarial verification must not conflate an in-memory deep comparison with validation of already-persisted financial data after a fresh page load.
