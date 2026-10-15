@@ -8,7 +8,8 @@ import {readFile} from 'node:fs/promises';
 const SITE='https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/#pilot';
 const KEY='SMOKE_BROWSER_PAPER_LAB_V1';
 const browser=await chromium.launch({headless:true});
-const page=await browser.newPage({viewport:{width:1280,height:900},acceptDownloads:true});
+const context=await browser.newContext({viewport:{width:1280,height:900},acceptDownloads:true});
+const page=await context.newPage();
 page.setDefaultTimeout(25_000);
 
 const peek=()=>page.evaluate(key=>window.localStorage.getItem(key),KEY);
@@ -93,7 +94,7 @@ try{
   assert.equal(await peek(),restored,'RELOAD_LOST_PAPER_STATE');
   // A second tab in the SAME browser profile must read exactly the same
   // saved PAPER snapshot; no synthetic position is created.
-  const secondTab=await page.context().newPage();
+  const secondTab=await context.newPage();
   try {
     await secondTab.goto(SITE,{waitUntil:'domcontentloaded',timeout:30_000});
     const crossTab=await secondTab.evaluate(key=>localStorage.getItem(key),KEY);
@@ -135,5 +136,6 @@ try{
     realOrders:false,syntheticJournalUnaffected:true,
   }));
 }finally{
+  await context.close();
   await browser.close();
 }
