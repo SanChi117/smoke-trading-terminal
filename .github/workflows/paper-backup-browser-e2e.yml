@@ -27,3 +27,5 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Validate JSON PAPER export and non-destructive restore
         run: node scripts/paper_backup_browser_e2e.mjs
+      - name: Validate active PAPER OPEN checkpoint reload and single STOP settlement
+        run: node --experimental-strip-types scripts/paper_open_reload_browser_e2e.mjs
