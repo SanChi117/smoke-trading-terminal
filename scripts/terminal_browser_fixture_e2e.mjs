@@ -208,13 +208,18 @@ try{
        u.searchParams.get('interval')==='15m' &&
        !u.searchParams.has('startTime')){
       const data=klines(u.searchParams);
-      assert.ok(data.length>30,'ETH_FIXTURE_TOO_SHORT');
-      data.splice(data.length-7,1);
-      await route.fulfill({
-        status:200,contentType:'application/json',
-        headers:{'Access-Control-Allow-Origin':'*'},
-        body:JSON.stringify(data),
-      });
+      // Short two-candle chart polls are valid. Corrupt only the deep history
+      // requested by the selected-symbol full V5 bundle.
+      if(data.length<=30){
+        await route.fallback();
+      }else{
+        data.splice(data.length-7,1);
+        await route.fulfill({
+          status:200,contentType:'application/json',
+          headers:{'Access-Control-Allow-Origin':'*'},
+          body:JSON.stringify(data),
+        });
+      }
     }else await route.fallback();
   };
   await page.route('https://fapi.binance.com/fapi/v1/klines?*',invalidEthKlines);
