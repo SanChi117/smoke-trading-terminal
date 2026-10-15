@@ -1,5 +1,30 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-15 — P8 PUBLIC-BROWSER ADVERSARIAL QA: missing 1m HALT/recovery and overlapping-tab stale write
+
+**Owner request:** Continue SMOKE Trading OS without changing V5, enabling live trading, or revisiting deferred Binance USD-M HTTP 451 platform move.
+
+### Changes and falsification
+- `edd213cebea8cb9914cf2a511c2fe6d1fe69e47b`: created independent **disposable** Playwright test `scripts/paper_gap_conflict_browser_e2e.mjs`. Seeds an OPEN simulated long and authentic-style PAPER_OPEN receipt using the **actual unchanged core** functions, but uses synthetic minute candles and separate anonymous Chromium browser profile on the **actual AppDeploy published Vite site**. Not a production signal, order or user-account write.
+- Market fault injection: first BTCUSDT public 1m HTTP200 response is missing one middle candle. The actual PILOT adapter's `verifyClosedMinutePage` must reject it as `PAPER_MINUTE_BACKFILL_MISSING_OR_INVALID_PAGE`; position remains OPEN, HALT+PAPER_HALT receipt recorded once, zero realized PnL. Refresh site then retry the same gap: no new position revision or repeated receipt. A corrected contiguous page should clear HALT and create one PAPER_CHECKPOINT receipt.
+- Real overlapping-tab simulation: **tab B** begins a PAPER minute fetch, its Binance response is intentionally suspended; **tab A** independently commits a corrected checkpoint into same-origin localStorage. When stale tab B's response is released, B sees a cross-tab storage event and is blocked with `PAPER_EXTERNAL_STORAGE_CHANGE_RELOAD_REQUIRED`. It cannot overwrite A's position, receipt or PnL; refreshing B re-reads A's persisted checkpoint. This is a verified optimistic stale-write conflict case; localStorage remains **non-atomic** and this is **NOT proof every possible near-simultaneous race is impossible**.
+- Next synthetic closed minute touches both SL and TP. The real browser engine settles STOP first, exactly one PAPER_CLOSE receipt and one negative PnL entry; reload and retry do not double count.
+- `7e97073f63628054740c5beb854a81deb0ec9d90`: extended existing `.github/workflows/paper-backup-browser-e2e.yml` to automatically trigger, syntax-check and run the new test after the earlier export/restore and open/reload E2Es; no new daemon, scheduled task or deployment.
+- **LIVE SITE CODE NOT ALTERED** in P8 because tested adapter passed the fault-injection scenario as currently deployed. AppDeploy snapshot remains `1792034193863`, previously inspected as `ready`. V5 source and PAPER rules unchanged.
+- **Verified complete GitHub Actions browser run `38733760176`, job `116417728356`: SUCCESS.** Logs show all 3 distinct tests PASS:
+  - `PAPER_LOCAL_BACKUP_RESTORE: PASS`
+  - `PAPER_OPEN_RELOAD_MINUTE_IDEMPOTENCY: PASS`
+  - `PAPER_GAP_RECOVERY_CROSSTAB_RACE: PASS`; fields `missingMinuteHalts=true,openPreserved=true,repeatedGapIdempotent=true,recoveryClearsHalt=true,concurrentStaleTabBlocked=true,checkpointNotOverwritten=true,reloadRecoversOtherTab=true,stopFirst=true,singleClose=true,noPnlDuplication=true,requests=5,realBinance=false,realOrders=false,ownerDataUntouched=true`.
+- Every simulated market response is from a locally controlled Playwright route. No authenticated account, balance, real Binance API, online daemon, database mutation or broker order used.
+
+### Critical remaining limitations / next test gates
+- A same-origin localStorage read/compare/write sequence is **not a true atomic CAS**: this successful stale-tab test cannot guarantee prevention of every possible interleaving. For genuinely multi-worker operations use the already designed PostgreSQL transactional CAS hosted deployment, after the deferred public USD-M egress issue is resolved.
+- Validate persisted **non-empty** journal integrity across a fresh page load, including tampered trade arithmetic (a fresh reload can otherwise rehydrate locally modified saved bytes), legacy V1 receipt-less snapshots, and a controlled import/restore of non-empty positions. Avoid destructive auto-migration of owner data.
+- Add first-entry partial-minute ambiguous-boundary HALT/recovery, SHORT TARGET and LONG TARGET fee arithmetic scenarios and strict historical market data freshness tests, keeping all such scenarios synthetic and separate from real forward journal.
+
+---
+
+
 ## 2026-10-15 — P7 ACTIVE PAPER POSITION: published UI crash/reload, 1m idempotency, STOP-first and full journal verification
 
 **User request:** "Сам сделаешь?" — independent completion of the previously announced active-PAPER recovery/duplicate-minute checks. No manual owner steps, account login, private wallet/broker access, trades or deployment of GitHub Vinext over the existing AppDeploy Vite website. The original V5 analyzer is NOT modified. HTTP 451 host migration remains deferred.
