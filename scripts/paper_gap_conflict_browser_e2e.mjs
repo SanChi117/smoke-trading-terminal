@@ -119,7 +119,12 @@ try{
   mode='healthy';
   const b=await context.newPage();
   b.setDefaultTimeout(20_000);
-  await b.clock.install({time:new Date(startAt)});
+  // Share one wall-clock time across both tabs. Re-installing B at the
+  // ORIGINAL startAt would rewind B a few seconds behind the receipts which
+  // A has already committed, correctly triggering strict future-time rejection.
+  // A real same-browser pair shares its wall clock; reproduce that property.
+  const sharedTime=await a.evaluate(()=>Date.now());
+  await b.clock.install({time:new Date(sharedTime)});
   let notifyBStarted;
   const bStarted=new Promise(resolve=>{notifyBStarted=resolve;});
   let releaseB;
