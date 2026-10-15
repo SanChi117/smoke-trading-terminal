@@ -170,6 +170,16 @@ test('Postgres restored journal rejects silent financial corruption with unchang
     assert.equal(closed.state.closed.length,1);
     const original=await store.read(symbol);
     assert.equal(original.revision,2);
+    const forgedWrite={...original,revision:3,lastChangedAt:now+min,
+      closed:[{...original.closed[0],
+        feesUsdt:original.closed[0].feesUsdt+1}]};
+    await assert.rejects(
+      store.compareAndSwap(symbol,2,forgedWrite),
+      /PAPER_PG_INVALID_FINANCIAL_WRITE/,
+      'FORGED_FINANCIAL_STATE_MUST_NEVER_BE_COMMITTED'
+    );
+    assert.deepEqual(await store.read(symbol),original,
+      'REJECTED_WRITER_CHANGED_POSTGRES_JOURNAL');
     // Simulate disk/restore/maintenance corruption: alter only a stored
     // commission; keep outer revision, trade quantity, exit, net PnL intact.
     await q(
