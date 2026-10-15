@@ -140,6 +140,61 @@ test('Postgres adapter denies malformed symbols and unsafe ledger keys',async()=
   await assert.rejects(store.read('BTCUSDT;DROP'),/PAPER_PG_INVALID_SYMBOL/);
 });
 
+test('Postgres restored journal rejects silent financial corruption with unchanged revision',async()=>{
+  const key='ci_paper_corrupt_money';
+  await clean(key);
+  const store=createPostgresPaperStore(q,key);
+  try{
+    const strategy={
+      id:'V5_UNMODIFIED',version:'V5_STABLE',executionAuthorized:false,
+      closedCycle:async(symbol,cycleCloseTime)=>({
+        symbol,cycleCloseTime,status:'OK',
+        assessments:[{state:'ready',side:'long',barCloseTime:cycleCloseTime,
+          entry:100,stop:98,target:106}],
+      }),
+    };
+    let now=base+3*min+3000;
+    const market={
+      observedQuote:async(s,at)=>({symbol:s,bid:99.99,ask:100,capturedAt:at}),
+      closedMinutes:async()=>[
+        {time:base+4*min,open:100,high:101,low:99,close:100},
+        {time:base+5*min,open:100,high:108,low:97,close:100},
+      ],
+    };
+    const runtime=createPortablePaperRuntime({store,strategy,market,clock:()=>now});
+    const opened=await runtime.onClosed15m(symbol,base);
+    assert.equal(opened.state.revision,1);
+    now=base+6*min;
+    const closed=await runtime.onMinute(symbol);
+    assert.equal(closed.state.revision,2);
+    assert.equal(closed.state.closed.length,1);
+    const original=await store.read(symbol);
+    assert.equal(original.revision,2);
+    // Simulate disk/restore/maintenance corruption: alter only a stored
+    // commission; keep outer revision, trade quantity, exit, net PnL intact.
+    await q(
+      "UPDATE smoke_paper_state_v1 SET document=jsonb_set(document, "+
+      "'{closed,0,feesUsdt}', "+
+      "to_jsonb(((document #>> '{closed,0,feesUsdt}')::numeric + 1)), false) "+
+      "WHERE ledger_key=$1 AND symbol=$2",
+      [key,symbol]
+    );
+    const corrupted=await q(
+      "SELECT revision,document FROM smoke_paper_state_v1 "+
+      "WHERE ledger_key=$1 AND symbol=$2",[key,symbol]);
+    assert.equal(Number(corrupted.rows[0].revision),2);
+    assert.equal(corrupted.rows[0].document.realizedNetUsdt,
+      original.realizedNetUsdt);
+    assert.notEqual(corrupted.rows[0].document.closed[0].feesUsdt,
+      original.closed[0].feesUsdt);
+    await assert.rejects(
+      createPostgresPaperStore(q,key).read(symbol),
+      /PAPER_PG_CORRUPT_FINANCIAL_RECORD/,
+      'CORRUPT_FEES_MUST_NEVER_BECOME_VALID_SAVED_PNL'
+    );
+  }finally{await clean(key);}
+});
+
 test.after(()=>console.log(JSON.stringify({
   suite:'PORTABLE_PAPER_POSTGRES_INTEGRATION',result:'PASS',
   postgresUsed:true,syntheticMarket:true,storageReopened:true,
