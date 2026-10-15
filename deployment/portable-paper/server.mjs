@@ -5,6 +5,7 @@ import http from 'node:http';
 import {createHash, timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
 import {createPostgresPaperStore} from '../../core/paper/postgres-paper-store.ts';
+import {parseLocalPaperBackup} from '../../core/paper/paper-backup.ts';
 
 const VALID_LEDGER=/^[a-z][a-z0-9_-]{1,48}$/;
 const VALID_SYMBOL=/^[A-Z0-9]{3,20}USDT$/;
@@ -49,14 +50,20 @@ function respond(response,status,data,extra={}) {
   response.end(payload);
 }
 function isValidPaper(state,symbol) {
-  return state&&typeof state==='object' &&
-    state.schema==='PAPER_V1' &&
-    state.id===symbol&&state.symbol===symbol &&
-    state.executionAuthorized===false &&
-    Number.isSafeInteger(state.revision)&&state.revision>=0 &&
-    Array.isArray(state.closed) &&
-    Number.isFinite(state.realizedNetUsdt) &&
-    (state.open===null||state.open?.symbol===symbol);
+  // The unauthenticated health check only verifies connectivity, but
+  // authenticated status and journal endpoints must never describe a forged
+  // fee/PnL/R as healthy merely because JSONB and the revision still match.
+  try {
+    const now=Date.now();
+    parseLocalPaperBackup({
+      format:'SMOKE_BROWSER_PAPER_BACKUP_V1',
+      exportedAt:now,
+      paper:{version:1,records:{[symbol]:state},notes:[],receipts:[]},
+    },[symbol],now);
+    return true;
+  }catch{
+    return false;
+  }
 }
 
 async function main() {
