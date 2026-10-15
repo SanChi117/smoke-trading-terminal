@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.13.0'
+      - name: Parse E2E test before browser installation
+        run: node --check scripts/paper_backup_browser_e2e.mjs
       - name: Install ephemeral headless browser
         run: |
           npm install --no-save playwright@1.56.1
