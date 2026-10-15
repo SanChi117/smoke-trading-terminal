@@ -1,5 +1,37 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-15 — P11/P12 PostgreSQL disaster recovery and stored-finance fail-closed audit
+
+**User request:** Continue stabilizing system before a real host/region deployment. The only operations performed are on the separate GitHub PR #88 DRAFT branch and isolated Actions CI PostgreSQL databases. **DO NOT** replace the live AppDeploy Vite source with this distinct GitHub Next/Vinext branch. Frozen V5 unchanged, browser PAPER unchanged, no scheduled scanner or exchange orders. The earlier published AppDeploy snapshot remained `1792085859614` READY before P11/P12.
+
+### P11 — prove a real pg_dump / pg_restore, not merely reconnect
+- GitHub `2df4116c2a0bc5c89d741b39543a32dfb50a5f93`: `scripts/postgres-paper-disaster-drill.mjs` — enforces two **loopback-only CI DB names** and fixture-only role; creates three genuine PostgreSQL-backed synthetic PAPER states: BTCUSDT one STOP close with negative modeled PnL, ETHUSDT OPEN short, SOLUSDT FLAT WATCH, with bounded revisioned documents and original hash recorded outside DB.
+- `36c643711591b0b4c514a6b25ab3eb052a9fae31`: amended `.github/workflows/portable-paper-postgres-qa.yml` after existing Postgres integration and strict TypeScript checks: run actual PostgreSQL 16 `pg_dump --format custom` in Docker; list archive via `pg_restore --list`, confirm nonempty archive; provision independent `smoke_restore_ci` DB; run real `pg_restore --exit-on-error` into new DB. Test script reopens restored connection, demands byte-equivalent structured JSON documents plus SHA256, checks original database unchanged, replays both previously closed 15m signal and STOP minute with no duplicate PnL, refuses stale CAS, settles previously open SHORT TARGET exactly once, and refuses duplicate profit booking.
+- **Confirmed P11 complete PASS**: GitHub `portable-paper-postgres-qa` run `38804809758`, job `116662777290`, all steps SUCCESS. Structured log `PAPER_PG_DISASTER_RESTORE result=PASS symbols=3 restoredOpenAndClosed=true unchangedSource=true preservedOnceOnlyStop=true replayedMinuteSkipped=true staleCASRejected=true shortTargetAfterRestart=true duplicatePnlBlocked=true realOrders=false realMarket=false productionDataTouched=false`. This is an actual Postgres archive/recovery drill with **synthetic** positions and a CI DB, NOT backup of user/production data.
+
+### P12 — independently falsify integrity of restored financial rows
+- `d069c5ba3519e4dd80db010f8001fb6a78759b02`: added failing-first Postgres integration test. Persist a legitimate completed STOP via production PAPER core, then directly mutate `feesUsdt` in PostgreSQL JSONB without altering revision, exit, totals or other fields; require store `read` to fail rather than report financial contradiction as valid.
+- **Confirmed RED**: run `38805266438`, job `116664355609`, tests **3 pass / 1 fail**. Error: `Missing expected rejection: CORRUPT_FEES_MUST_NEVER_BECOME_VALID_SAVED_PNL`. Source `createPostgresPaperStore.read` only verified JSON root and matching revision.
+- `8ea7bea2398fa39e24dfe6ec051bf334fe6668e0`: updated `core/paper/postgres-paper-store.ts` to reuse strict **PAPER V1** `parseLocalPaperBackup` invariants on each persisted-state read and before CAS writes. Invalid saved PnL/fees/R is rejected with `PAPER_PG_CORRUPT_FINANCIAL_RECORD`; invalid outgoing state with `PAPER_PG_INVALID_FINANCIAL_WRITE`. Prior revision/authorization gates remain enforced; no strategy/business behavior changed.
+- `229e1a1f008d029c5c4ff84cdb730839b29b4fb6`: added explicit forged-financial CAS **write** rejection test and state immutability assertion before raw DB tamper negative read test.
+- **Confirmed GREEN** on updated read AND write protections + repeated real restore: PostgreSQL Actions run `38805670747`, job `116665747978`, SUCCESS; Postgres integration **4/4** tests PASS, no failures, and actual archive `PAPER_PG_DISASTER_RESTORE result=PASS` as before.
+
+### P12 HTTP control-plane consistency
+- Authenticated standalone HTTP `/status` read a raw PostgreSQL JSONB list with a *shallow* validator, while `/journal` used the now-strict store. A financially forged flat record could be displayed as healthy in `/status` while `/journal` rejected it.
+- `2067dc9ad5b5bf3bc0ba859a83752b6602269196`: added **RED-first** standalone integration: restore ordinary authorized state after earlier permission-corruption test then modify only saved `realizedNetUsdt` to 42, leave revision unchanged, require authenticated `GET /status` and `GET /journal/BTCUSDT` BOTH return 503.
+- **Confirmed RED** `portable-paper-standalone-http-qa` run `38805922276`, job `116666621506`: `FINANCIAL_CORRUPTION_STATUS_MUST_FAIL`, expected HTTP 503, got 200.
+- `1dd15ab3d4d2a3c7ac92eeeb51749a37282fe421`: updated `deployment/portable-paper/server.mjs` to reuse strict pure backup validator in `isValidPaper`, refuse financial inconsistency without echoing user records. `/health` continues to indicate mere DB connectivity and never pretends live scanning is active.
+- **Confirmed GREEN** standalone server Actions run `38806065551`, job `116667117676`: SUCCESS, HTTP integration **2/2 PASS**, overall **8/8 tests PASS** including read-only authorization 401/405, rollback, forced corruption 503, V5 worker disabled, real Docker image build and boot, synthetic regional probe.
+
+### Critique and remaining blockers
+- New stricter DB validation prevents **internally inconsistent** state; it is not a cryptographic MAC, independent tamperproof audit or proof of genuine exchange fills. Anyone controlling all fields and the DB may create a self-consistent fake journal. PG CAS ensures revisions atomically, not audited live execution.
+- Backup was taken and restored inside a disposable CI environment. Real managed Postgres provider snapshots, offsite retention, real restore permissions, point-in-time recovery, secrets and operational rollback remain unverified until a hosting platform is selected. Do NOT claim production disaster recovery is complete.
+- GitHub CI uses *mocked* market candles, unlike genuine Binance USD-M; GitHub egress HTTP 451 and hosting platform selection are deferred per user's priority. PAPER ONLY remains enforced, nothing auto-trades.
+- The GitHub branch PR remains DRAFT pending separate review. Actual live AppDeploy Vite version intentionally unchanged by these server-only patches.
+
+---
+
+
 ## 2026-10-15 — P10 PAPER ACCOUNTING ADVERSARIAL: forged fees/R rejected; non-empty browser backup restored
 
 **User instruction:** "провверяй": test the remaining detailed release gates: non-empty PAPER restore, ambiguous entry-minute and independent LONG/SHORT fee and R accounting. P10 is fully PAPER/isolated-fixture ONLY; no live orders, no owner account state and no V5 edits. Previous SHA `3a6226d62374fd1490d14446820a9d76ac8e5bef` had **8/8 main GitHub CI workflows SUCCESS**. AppDeploy published Vite snapshot `1792067122969` started P10 `ready`.
