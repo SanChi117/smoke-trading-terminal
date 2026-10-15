@@ -1,5 +1,29 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-15 — P6 BROWSER PAPER PRESERVATION: export/restore/reload/cross-tab proven in deployed v49
+
+**Owner priority:** stabilize published chart, V5 scan, PAPER and backtest before any future hosting/451 work. Published Vite AppDeploy snapshot `1792033068745`, unchanged since P5 integrity fix; its `get_app_status` was `ready` with empty frontend/backend errors. No database-backed production PAPER import and no live orders.
+
+### Changes and test results
+- `5b8545590ad62d07aeebe2ac31cb7b6d1189d786`: extended `scripts/paper_backup_browser_e2e.mjs` to reopen the restored journal in another Chromium tab **in the same browser profile** and require byte-identical persisted `SMOKE_BROWSER_PAPER_LAB_V1`. Does not seed real or fake position events; original local only empty backup/journal remains isolated to test Chromium profile.
+- `0a8ba7844b2f324497f7cde6d21675be98ac5cf3`: added early `node --check` to `.github/workflows/paper-backup-browser-e2e.yml` so syntax errors are rejected before Chromium install.
+- Initial E2E run `38674560350` failed at new second-tab test, after prior export/reload checks had completed, because the Playwright `browser.newPage()` implicit owned context disallows creating its second page. This was a **test harness limitation**, not a demonstrated AppDeploy journal bug.
+- `33691b00be58ad4937fc50b44a923ced138e2360`: switched harness to explicit `browser.newContext()` and `context.newPage()` for both tabs, with cleanup, while preserving same origin/localStorage. No deployed website code changed.
+- **P6 end-to-end browser EVIDENCE:** GitHub Actions `paper-backup-browser-e2e` run **`38674688354` SUCCESS**, job **`116225491339`** with structured log `e2e=PASS phase=PAPER_LOCAL_BACKUP_RESTORE`. Every flag true: `exportedJson`, `corruptRejected`, `forgedRejected`, `forgedPnlRejected`, `canceledWithoutChange`, `explicitlyConfirmed`, `reloadPreserved`, **`crossTabReadBack`**, `olderRevisionRestoreBlocked`, `anonymousCloudRefused`; `realOrders=false`, `syntheticJournalUnaffected=true`.
+- This confirms browser-local empty PAPER journal operations and data isolation on the **actual public AppDeploy URL with an anonymous disposable browser**. It does NOT prove persistence/reconciliation of filled genuine market PAPER trades or cross-account cloud backup recovery. Those remain release blockers.
+
+### Verified P5 linked browser evidence
+- `terminal-browser-fixture-e2e` run **`38674295630` SUCCESS**, job **`116224254612`**: 19-symbol scanner, desktop+mobile chart 1m/15m etc, keyboard zoom/pan persistence, 7-day+30-day Binance OHLCV pagination fixtures, stale backtest error removal, stale scanner READY clearing, symbol reload recovery, and **HTTP200 with missing ETH 15m candle rejects false analysis then recovers**. Only synthetic public USD-M fixtures; no actual market or orders.
+- `market-kline-integrity-qa` run **`38673657831` SUCCESS**: 12/12 tests and strict TS. Staging release `1792033068745` read-back proved new `core/market/binance-kline-page.ts` and strict loader deployed. No future bar leak to unchanged V5.
+
+### Next
+- Continue stage-by-stage reliability: in-memory vs persisted PAPER OPEN (not just empty state) crash/reload, repeated minute checkpoint idempotency and cross-tab mutation guard; use disposable synthetic fixtures only.
+- Then revalidate the actual V5/LevelFlow signal path and historical backtest's actual quantitative correctness. No new V5 rules until separately approved.
+- Server HTTP451/actual target hosting region intentionally deferred; automated cron and broker order execution remain off.
+
+---
+
+
 ## 2026-10-15 — P5 TERMINAL INTEGRITY: reject malformed/gapped Binance candle pages before chart/V5/backtest
 
 **User instruction:** continue stabilizing actual SMOKE terminal; postpone Binance USD-M HTTP451 server-region/Railway deployment until later. Do not rewrite frozen V5 or change real-order boundary. Preserve existing AppDeploy Vite deployment and all user data.
