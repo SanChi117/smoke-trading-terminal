@@ -1,5 +1,6 @@
 import type { PilotPaperState } from './paper-pilot-state.ts';
 import type { PaperReceipt } from './paper-receipt.ts';
+import {PILOT_PAPER_POLICY} from './paper-lifecycle.ts';
 
 // Pure parser: no localStorage reads, no writes, no synthetic trades.
 // A backup is user-controlled input and is never trusted merely because it is JSON.
@@ -136,8 +137,18 @@ export function parseLocalPaperBackup(
             ? Number(item.exit) - Number(item.entry)
             : Number(item.entry) - Number(item.exit)) * Number(item.quantity)) &&
         closeMoney(item.netPnlUsdt,Number(item.grossPnlUsdt) - Number(item.feesUsdt)) &&
-        (Math.abs(Number(item.netPnlUsdt)) <= 1e-7 ||
-          Math.sign(Number(item.realizedR)) === Math.sign(Number(item.netPnlUsdt))),
+        // V1 PAPER always models taker fees on BOTH its simulated entry
+        // and exit. A fabricated commission must not be accepted simply
+        // because gross/net/lifetime PnL were forged consistently.
+        closeMoney(item.feesUsdt,
+          (Number(item.entry) + Number(item.exit)) *
+          Number(item.quantity) * PILOT_PAPER_POLICY.takerFeeRate) &&
+        // Trade records omit initialRiskUsdt, but the original risk can be
+        // reconstructed from entry, stop and quantity. Check R magnitude
+        // instead of merely its sign; sign-only allowed fabricated gains.
+        closeMoney(item.realizedR,Number(item.netPnlUsdt) /
+          (Math.abs(Number(item.entry) - Number(item.stop)) *
+            Number(item.quantity))),
 
         'INVALID_TRADE_' + symbol);
       seenTrades.add((item as Record<string, unknown>).id as string);
