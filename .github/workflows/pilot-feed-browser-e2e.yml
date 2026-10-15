@@ -1,0 +1,27 @@
+name: pilot-feed-browser-e2e
+
+on:
+  push:
+    paths:
+      - scripts/pilot_feed_browser_e2e.mjs
+      - .github/workflows/pilot-feed-browser-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  anonymous-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Install ephemeral browser test tooling
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: PILOT feed diagnostic E2E, no journal mutations
+        run: node scripts/pilot_feed_browser_e2e.mjs

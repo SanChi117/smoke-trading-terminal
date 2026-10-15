@@ -76,6 +76,35 @@ export function evaluatePilotPaperCycle(
   if (prior.lastCycle !== null && cycle.cycleCloseTime <= prior.lastCycle) {
     return { outcome: 'SKIPPED', state: prior };
   }
+  // A transient unavailable strategy snapshot is NOT a processed candle.
+  // Keep the lastCycle watermark unchanged so the SAME closed bar can be
+  // retried with complete evidence. Repeated failures do not flood revisions.
+  if (!prior.open && cycle.status !== 'OK') {
+    if (prior.lastEntryAttempt === 'STRATEGY_DATA_UNAVAILABLE') {
+      return { outcome: 'SKIPPED', state: prior };
+    }
+    return { outcome: 'CHANGED', state: {
+      ...prior, revision: prior.revision + 1,
+      lastEntryAttempt: 'STRATEGY_DATA_UNAVAILABLE',
+      haltReason: null, lastChangedAt: now,
+    } };
+  }
+  if (!prior.open) {
+    const ready = cycle.assessments.find(item =>
+      item.state === 'ready' && item.side !== null &&
+      item.entry !== null && item.stop !== null && item.target !== null &&
+      item.barCloseTime === cycle.cycleCloseTime);
+    if (ready && (evidence.errorCode || !evidence.quote)) {
+      const reason = evidence.errorCode ?? 'PAPER_QUOTE_UNAVAILABLE';
+      if (prior.lastEntryAttempt === reason) {
+        return { outcome: 'SKIPPED', state: prior };
+      }
+      return { outcome: 'CHANGED', state: {
+        ...prior, revision: prior.revision + 1, lastEntryAttempt: reason,
+        haltReason: null, lastChangedAt: now,
+      } };
+    }
+  }
   let next: PilotPaperState = {
     ...prior,
     revision: prior.revision + 1,
@@ -137,4 +166,79 @@ export function evaluatePilotPaperCycle(
     }
   }
   return { outcome: 'CHANGED', state: next };
+}
+
+
+/**
+ * Settle an EXISTING PAPER position from closed one-minute market evidence.
+ * This transition is independent of 15m signal discovery: it does not advance
+ * lastCycle and can run repeatedly inside the same 15m candle.
+ * No branch here can open a position or authorize exchange execution.
+ */
+export function evaluatePilotOpenPosition(
+  prior: PilotPaperState,
+  evidence: PilotMarketEvidence,
+  now: number,
+): PilotTransition {
+  if (prior.schema !== 'PAPER_V1' || prior.executionAuthorized !== false ||
+      !prior.open || prior.open.symbol !== prior.symbol ||
+      !Number.isSafeInteger(prior.revision) || prior.revision < 0 ||
+      !Number.isSafeInteger(now) || now <= 0 ||
+      prior.open.enteredAt > now ||
+      (prior.lastCycle !== null && (!Number.isSafeInteger(prior.lastCycle) ||
+        prior.lastCycle <= 0 || prior.lastCycle > now)) ||
+      !Array.isArray(prior.closed)) {
+    throw new Error('PAPER_INVALID_POSITION_MONITOR_INPUT');
+  }
+
+  // The next minute is not yet closed; do not invent an exit or mutate state.
+  if (now < prior.open.firstEligibleMinuteOpen + 60_000) {
+    return { outcome: 'SKIPPED', state: prior };
+  }
+
+  const result = evidence.errorCode || !evidence.minutes
+    ? { kind: 'HALTED' as const, reason: evidence.errorCode ?? 'PAPER_MINUTES_UNAVAILABLE' }
+    : settlePaperFromClosedMinutes(prior.open, evidence.minutes, now);
+
+  if (result.kind === 'CLOSED') {
+    return { outcome: 'CHANGED', state: {
+      ...prior,
+      revision: prior.revision + 1,
+      open: null,
+      closed: [result.trade, ...prior.closed].slice(0, 80),
+      realizedNetUsdt: prior.realizedNetUsdt + result.trade.netPnlUsdt,
+      lastEntryAttempt: 'CLOSED_PREVIOUS_POSITION',
+      haltReason: null,
+      lastChangedAt: now,
+      // lastCycle intentionally unchanged: the same 15m signal cannot reopen.
+    } };
+  }
+
+  if (result.kind === 'HALTED') {
+    if (prior.haltReason === result.reason &&
+        prior.lastEntryAttempt === 'UNRESOLVED_POSITION') {
+      return { outcome: 'SKIPPED', state: prior };
+    }
+    return { outcome: 'CHANGED', state: {
+      ...prior,
+      revision: prior.revision + 1,
+      haltReason: result.reason,
+      lastEntryAttempt: 'UNRESOLVED_POSITION',
+      lastChangedAt: now,
+    } };
+  }
+
+  if (result.position.lastCheckedMinuteOpen ===
+      prior.open.lastCheckedMinuteOpen &&
+      prior.haltReason === null) {
+    return { outcome: 'SKIPPED', state: prior };
+  }
+  return { outcome: 'CHANGED', state: {
+    ...prior,
+    revision: prior.revision + 1,
+    open: result.position,
+    lastEntryAttempt: 'POSITION_OPEN',
+    haltReason: null,
+    lastChangedAt: now,
+  } };
 }

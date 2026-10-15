@@ -1,0 +1,94 @@
+name: portable-paper-standalone-http-qa
+
+on:
+  push:
+    paths:
+      - 'deployment/portable-paper/**'
+      - 'core/paper/postgres-paper-store.ts'
+      - 'deployment/postgres/0001_paper_state.sql'
+      - 'core/market/binance-usdm-egress.ts'
+      - 'tests/binance-usdm-egress.test.mjs'
+      - '.github/workflows/portable-paper-standalone-http-qa.yml'
+  pull_request:
+    paths:
+      - 'deployment/portable-paper/**'
+      - 'core/paper/postgres-paper-store.ts'
+      - 'deployment/postgres/0001_paper_state.sql'
+      - '.github/workflows/portable-paper-standalone-http-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-http-readonly-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smoke_test
+          POSTGRES_PASSWORD: smoke_ci_only
+          POSTGRES_DB: smoke_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U smoke_test -d smoke_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SMOKE_TEST_PG_URL: postgresql://smoke_test:smoke_ci_only@127.0.0.1:5432/smoke_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Install isolated server dependencies
+        run: npm ci --prefix deployment/portable-paper --ignore-scripts --no-audit --no-fund
+      - name: Verify real PostgreSQL read-only server, fail-close, crash recovery
+        run: node --experimental-strip-types --test deployment/portable-paper/tests/server.integration.mjs
+      - name: Verify fail-closed Binance USD-M regional probe with fixtures
+        run: node --experimental-strip-types --test tests/binance-usdm-egress.test.mjs
+      - name: Build standalone Docker image without deployment
+        run: docker build --file deployment/portable-paper/Dockerfile --tag smoke-portable-paper:test .
+      - name: Ensure V5 PAPER worker cannot start by default
+        run: |
+          set -eu
+          set +e
+          OUTPUT=$(docker run --rm --network none smoke-portable-paper:test \
+            node --experimental-strip-types \
+            deployment/portable-paper/worker-once.mjs 2>&1)
+          EXIT=$?
+          set -e
+          test "$EXIT" = "2"
+          printf '%s\n' "$OUTPUT" | grep -q 'EXPLICIT_WORKER_AND_REGIONAL_EGRESS_GATES_REQUIRED'
+          echo 'PORTABLE_PAPER_WORKER_DEFAULT_OFF=PASS'
+      - name: Boot Docker image with isolated PostgreSQL and test read-only API
+        env:
+          SMOKE_PAPER_READ_TOKEN: ci_fixture_authorization_token_1234567890abcdef
+        run: |
+          set -eu
+          ID=$(docker run --rm -d --network host \
+            -e SMOKE_PAPER_DATABASE_URL="$SMOKE_TEST_PG_URL" \
+            -e SMOKE_PAPER_LEDGER_KEY=ci_docker_smoke \
+            -e SMOKE_PAPER_READ_TOKEN="$SMOKE_PAPER_READ_TOKEN" \
+            -e SMOKE_PAPER_HOST=0.0.0.0 \
+            -e PORT=18997 smoke-portable-paper:test)
+          trap 'docker stop "$ID" >/dev/null 2>&1 || true' EXIT
+          READY=0
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://127.0.0.1:18997/health > /tmp/smoke-paper-health.json; then
+              READY=1
+              break
+            fi
+            sleep 0.2
+          done
+          if [ "$READY" != "1" ]; then docker logs "$ID"; exit 1; fi
+          node -e 'const j=require("/tmp/smoke-paper-health.json");if(!j.ok||j.scanEnabled!==false||j.executionAuthorized!==false||j.storage!=="POSTGRES_READY")process.exit(1)'
+          HTTP=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18997/status)
+          test "$HTTP" = "401"
+          curl --silent --fail -H "Authorization: Bearer $SMOKE_PAPER_READ_TOKEN" http://127.0.0.1:18997/status > /tmp/smoke-paper-status.json
+          node -e 'const j=require("/tmp/smoke-paper-status.json");if(!j.ok||j.strategyId!=="V5_UNMODIFIED"||j.scanEnabled!==false||j.executionAuthorized!==false)process.exit(1)'
+          echo 'PORTABLE_PAPER_CONTAINER_SMOKE=PASS'

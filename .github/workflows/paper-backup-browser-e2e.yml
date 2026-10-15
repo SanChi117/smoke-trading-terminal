@@ -1,0 +1,42 @@
+name: paper-backup-browser-e2e
+
+on:
+  push:
+    paths:
+      - scripts/paper_backup_browser_e2e.mjs
+      - scripts/paper_open_reload_browser_e2e.mjs
+      - scripts/paper_gap_conflict_browser_e2e.mjs
+      - scripts/paper_nonempty_restore_browser_e2e.mjs
+      - .github/workflows/paper-backup-browser-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-journal-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Parse E2E test before browser installation
+        run: |
+          node --check scripts/paper_backup_browser_e2e.mjs
+          node --check scripts/paper_open_reload_browser_e2e.mjs
+          node --check scripts/paper_gap_conflict_browser_e2e.mjs
+          node --check scripts/paper_nonempty_restore_browser_e2e.mjs
+      - name: Install ephemeral headless browser
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Validate JSON PAPER export and non-destructive restore
+        run: node scripts/paper_backup_browser_e2e.mjs
+      - name: Validate active PAPER OPEN checkpoint reload and single STOP settlement
+        run: node --experimental-strip-types scripts/paper_open_reload_browser_e2e.mjs
+      - name: Reject missing-minute data and conflicting cross-tab writes
+        run: node --experimental-strip-types scripts/paper_gap_conflict_browser_e2e.mjs
+      - name: Import/export nonempty PAPER journal and reject forged fees and R
+        run: node --experimental-strip-types scripts/paper_nonempty_restore_browser_e2e.mjs

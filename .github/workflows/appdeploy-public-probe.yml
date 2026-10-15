@@ -1,0 +1,23 @@
+name: appdeploy-public-probe
+
+on:
+  push:
+    paths:
+      - scripts/probe_appdeploy_public.mjs
+      - .github/workflows/appdeploy-public-probe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-safety-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+      - name: Probe published AppDeploy and anonymous PAPER API authorization
+        run: node scripts/probe_appdeploy_public.mjs

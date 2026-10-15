@@ -1,0 +1,122 @@
+# SMOKE release gate before changing entry methodology and importing to Railway
+
+Status: NOT RELEASE-READY — 2026-10-14.
+Reference: AppDeploy published v44 (1791995185936); GitHub draft PR #88 contains additional inactive pure input validation and test probes. Published AppDeploy source and GitHub Next/Vinext remain divergent.
+
+## Scope and invariant
+
+The only authorized scope here is PAPER research and terminal stability. New entry mechanics are deliberately NOT installed yet. Zero private exchange credentials or live order endpoints are part of this release. Never enable live trading by deploying a template, restoring a journal, activating a strategy adapter or toggling environment variables.
+
+## Evidence ladder
+
+Evidence must be tracked separately:
+- CODED: present in source (does not imply a working site).
+- CI PASS: deterministic tests/lint/build pass on exact Git SHA.
+- DEPLOYED: relevant source read back from published AppDeploy snapshot.
+- E2E PASS: actual browser interaction and persisted API readback have been witnessed.
+- UNVERIFIED/BLOCKED: cannot infer from platform build-success or a simulated result.
+
+## Current milestone evidence
+
+| Capability | Evidence | Status |
+|---|---|---|
+| Local PAPER deterministic lifecycle, fees, stop-first, missing-minute HALT, duplicate guard | GitHub pure-core integration tests | CI PASS |
+| 15m independent open-PAPER minute monitoring and bounded 7-day pagination | AppDeploy v42 source + GitHub tests | DEPLOYED, E2E UNVERIFIED |
+| Mature position stops repeating entry-minute lookups | AppDeploy v42 source and GitHub cursor regression | DEPLOYED, CI PASS |
+| Cross-tab conflict detection and readback rollback | AppDeploy v38+ source, deterministic helper tests | DEPLOYED, manual E2E UNVERIFIED |
+| Local JSON backup export/preview/confirm/reload | AppDeploy v44 + GitHub browser run 38607247143 | DEPLOYED; ANONYMOUS EMPTY-LEDGER BROWSER E2E PASS; REAL JOURNAL RESTORE UNVERIFIED |
+| User-isolated AppDeploy cloud copy API | AppDeploy v40 source | DEPLOYED, authenticated E2E UNVERIFIED |
+| Integrity of modeled gross/net PnL and bounded journal totals during backup import | AppDeploy v42 source + GitHub pure-core tests | DEPLOYED, manual E2E UNVERIFIED |
+| Binance kline normalizer rejects malformed OHLCV, mixed instruments, wrong weekly/month boundaries | GitHub shared market-data normalizer + deterministic tests | GITHUB CODED, NOT APPDEPLOY-DEPLOYED |
+| Future module closed multi-timeframe gate rejects gapped, stale and partial candles | GitHub core/market/strategy-candles.ts (not wired into V5) | GITHUB CODED, NOT ACTIVE |
+| Binance USD-M direct browser access across symbols/TFs | AppDeploy v44 read-only 30-check UI | DEPLOYED; GitHub runner E2E PASS (data HTTP 451); OPERATOR REPORTS NO ERRORS IN OWN BROWSER, per-request log not retrieved |
+| Server-side autonomous PAPER and scheduler | AppDeploy server config explicitly paused due to HTTP 451; browser manual workflow | BLOCKED |
+| 24/7 durable journal with transactional backend / recovery | Not implemented or exercised for the present browser research engine | BLOCKED |
+| Portable Railway importer and full updated UI export | AppDeploy-vs-GitHub reconciliation incomplete | BLOCKED |
+| New entry strategy module | Not provided / intentionally deferred by owner | NOT IN SCOPE NOW |
+
+## Prerequisites to start integrating the new entry logic
+
+- P0: Backup-integrity fixes are PUBLISHED in AppDeploy v42; next verify real browser JSON import round-trip and inspect legacy snapshot compatibility.
+- P0: Verify actual browser USD-M feed with timestamp/freshness for 1w,1d,4h,15m,5m and invalid/network cases. Expose failures; do not create fake market observations.
+- P0: Exercise in-browser isolated mechanics test and manual export, corrupt import refusal, real backup round-trip in the authorized account (without synthetic live PAPER journal changes).
+- P0: Prove server-backed PAPER state/receipt consistency and automatic 1m reconciliation on a trusted host accessible to Binance. AppDeploy server HTTP 451 cannot be treated as an operational service.
+- P1: Verify scanner ordering, chart pan/zoom/TF persistence, backtest open-on-chart and mobile navigation against live UI.
+- P1: Install new entry mechanic as an **inactive versioned strategy adapter**, compare historical and out-of-sample evidence, then conduct separate PAPER validation without changing V5.
+- P1: Reconcile/export exact AppDeploy deployed source and GitHub with secret scanning and versioned release manifest; preserve last-known-good running site.
+- P1: Only after all release checks pass, assemble Railway deployment for API + worker + PostgreSQL (not a legacy HYBRID v2 installation). Run rollback and backup recovery drill.
+
+## Minimum acceptance test scenarios
+
+1. Real market feed and expected TF closure: fresh full histories; invalid symbols and Binance 403/451/429 are visible DATA_ERROR.
+2. No READY -> zero fabricated OPEN/PnL. Genuine READY -> observed post-signal quote -> PAPER OPEN with fees and stable ID.
+3. PAPER OPEN -> closed 1m checkpoint; same 15m candle may produce STOP/TARGET from valid evidence. Both same candle -> STOP. Missing entry minute -> HALT.
+4. Repeated calls and second tab cannot duplicate an entry/exit, credit PnL twice or overwrite a newer revision.
+5. Recovery after browser reload and outages: incremental minute cursor, 900-bar pagination, 7d bounded gap; no fictitious settlement.
+6. Export JSON -> validate -> preview -> explicit confirm -> readback. Wrong symbol, executionAuthorized:true, forged PnL, stale revision, malformed trades -> reject.
+7. Authorized AppDeploy backup POST -> consistent GET -> list/preview/recover; anonymous and other users cannot view owner data.
+8. API/worker kill and restart -> position/cursor preserved on persistent storage; stale positions remain HALT pending reconciliation, no live orders.
+9. Scanner/chart/backtest UX checked desktop/mobile and error paths; no black screen or incorrect stale symbol.
+10. New strategy adapter registered but stays inactive until approved; old strategy and stored PAPER positions remain unchanged.
+
+## Railway import design (after strategy integration)
+
+- Use a supported Docker/Node/Python service for a PAPER API/worker; PostgreSQL with migrations, access control, backup, restore drill; persistent metrics and health endpoint.
+- Railway GitHub deployment automatically rebuilds from reviewed release commits. Do not import the legacy deployment/install_smoke_paper_server.sh as the new engine: it starts an older HYBRID v2 model.
+- Reconcile the exact AppDeploy UI and backend first; GitHub main is not a byte-for-byte mirror. A direct GitHub deployment today would risk loss of features.
+- Set always-on service policy and monitor Binance egress/HTTP 451/429; verify regional accessibility before shifting any scanner.
+- Keep current AppDeploy UI alive through parallel validation. Cutover only with rollback and proof of identical isolated PAPER outcomes.
+
+## Deployment guard / project policy
+
+A green CI check proves only the tested code on a commit. AppDeploy 'ready' only means deployment built and its limited QA found no recorded crash. Neither proves that scheduled 24/7 scanning or real-market PAPER events work.
+
+## 2026-10-14 additional stability hardening (GitHub only)
+
+- Shared market-data normalizer now checks OHLCV coherence, positive prices,
+  nonnegative volumes/trades, exact 1w Monday-UTC and 1M calendar closes,
+  source/TF/symbol isolation when detecting gaps, and duplicate bars.
+- Independent `validateClosedStrategyBundle` preflights 1w/1d/4h/15m/5m
+  candles for future-entry modules: no incomplete candle, lookahead, stale tail,
+  timestamp misalignment, gap, or malformed candle can silently pass.
+- Neither change activates a strategy or alters published AppDeploy V5.
+  These are GitHub source/test changes only until the two runtimes are reconciled.
+- A valid current, still-forming Binance candle may appear in raw market streams.
+  The normalized candle exposes `closed:false`; strategy preflight rejects
+  partial candles explicitly. Do not misinterpret partial market data as a feed error.
+- Both GitHub workflow statuses need to be checked against the latest exact SHA
+  before claiming this row CI PASS. E2E on production stays UNVERIFIED.
+
+## Public external probe — 2026-10-14
+
+- GitHub Actions `appdeploy-public-probe` confirmed the published site's root URL responds 200 with an HTML shell.
+- Direct unauthenticated GET to the same web hostname under `/api/pilot/browser-backups` and `/api/pilot/paper` yielded **HTML fallback (200)**, not JSON. This is **not** an authenticated API test and does not prove that PAPER records leaked.
+- The frontend `api` transport is SDK-managed; the owner must test account-scoped backend routes by signing in through the real browser UI and verifying unauthorized access is rejected using a separate account. No private data or LIVE trade paths were accessed during the public probe.
+- The external probe is a narrow **site availability** PASS only. Do not promote it to PAPER-API auth E2E PASS.
+
+## 2026-10-14 — v43 market feed gate and hosted connectivity evidence
+
+- AppDeploy v43 snapshot 1791994628835 published with read-only PilotMarketFeedAudit in PILOT. It sends at most 30 public GET requests after a deliberate button click, checks 5 symbols x 5 TF plus a bid/ask ticker for each, and never reads or mutates PAPER records. AppDeploy deployment ready; frontend/backend/network QA arrays empty. Core validation logic and offline tests are in core/market/pilot-feed-audit.ts.
+- GitHub dedicated binance-usdm-readonly-probe job 38596941787 ran on an external GitHub-hosted runner (2026-10-14 16:18 UTC). **All 30 of 30 Binance USD-M REST GET requests returned HTTP 451**. This blocks the tested runner, not necessarily other provider regions or the user's browser.
+- The known AppDeploy backend reported Binance USD-M HTTP 451 previously. Two cloud environments now have explicit blocked evidence; neither can be considered a suitable always-on scanner host without a compliant, provider-supported remedy.
+- A different venue's candles are NOT a transparent substitute for Binance USD-M perpetual futures candles, volume or liquidity. Do not silently mix venues or report simulated signals as Binance-backed READY.
+- Railway admission test: deploy an independent read-only probe in the exact candidate service region and network; verify required 1w/1d/4h/15m/5m/1m candles, depth/quotes and rate-limit behavior through permitted endpoints before migrating any journal or enabling 24/7 PAPER worker. Region must comply with exchange access requirements. HTTP 403/451/429, CORS or unverified OHLCV freshness blocks release.
+- The built-in v43 browser diagnostic may work even when cloud egress fails, but requires an actual operator click to establish results. Until then, BROWSER LIVE FEED remains UNVERIFIED; a green AppDeploy build cannot replace the check.
+- GitHub public-host appdeploy-public-probe tested only the frontend shell; API paths on the SPA host return an HTML fallback. Authenticated SDK API access still awaits an account-based E2E test.
+
+## 2026-10-14 v44 actual browser-UI E2E acceptance
+
+- AppDeploy v44 snapshot 1791995185936 published and re-read. It additionally rejects future-opening Binance candle data without changing the active V5 or PAPER journal contract.
+- GitHub Actions run 38598297290, pilot-feed-browser-e2e, completed PASS in Chromium with desktop viewport 1280x900 AND mobile viewport 390x844.
+- On both viewports, clicked built-in PILOT self-test and observed 17 of 17 isolated PAPER mechanical test scenarios PASS. This is genuine page E2E of deterministic synthetic trade logic; it is NOT a genuine market-triggered trade.
+- On both viewports, clicked read-only Binance diagnostic, observed 30 of 30 rendered symbol/timeframe/quote results. In the GitHub region, there were 0 market PASS, 30 market ERROR due to blocked Binance USD-M access.
+- Before and after all button interactions, headless browser localStorage PAPER journal bytes were identical. Neither test injects READY, opens PAPER trades or sends real broker orders.
+- GitHub terminal-ci and level-flow-ci passed on UI+test code commit 56d5522b01f0aa98b2875c34a3d97b5e324cf434. Re-check CI on latest docs-only head before merge.
+- Still required for autonomy/release: end-user browser data audit, real signal PAPER READY->OPEN->CLOSE, authenticated AppDeploy backup E2E with a real account and separate-user isolation, chart/scanner/backtest mobile acceptance, and a lawful Binance-accessible 24/7 service host.
+
+## 2026-10-14 — Local JSON restore actual published-browser E2E
+
+- GitHub Actions `paper-backup-browser-e2e`, run `38607247143`, completed SUCCESS on published v44.
+- In an isolated anonymous Chromium profile, exported the baseline PAPER JSON, rejected malformed JSON and forged `executionAuthorized:true`, previewed valid data without writing, canceled safely, explicitly confirmed restore, and verified bytes persisted after reload. Anonymous cloud backup action did not claim to save; no PAPER order or position was created.
+- Scope of evidence: **empty baseline test journal only**, not actual user position PnL or signed-in AppDeploy database restore. Those remain unverified pending a real authorized account session and controlled backup/readback drill.
+- The user independently reported that the built-in Binance browser feed check had no errors. This is an operator report; per-item pass/fail logs were not captured by our tools. Hosted GitHub and AppDeploy server Binance USD-M access restrictions remain independent blockers for unattended execution.

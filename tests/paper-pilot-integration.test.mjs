@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  blankPilotPaperState, evaluatePilotPaperCycle,
+  blankPilotPaperState, evaluatePilotPaperCycle, evaluatePilotOpenPosition,
 } from '../core/paper/paper-pilot-state.ts';
 
 const BASE = Date.UTC(2026, 9, 12, 18, 15);
@@ -202,4 +202,384 @@ test('rejects corrupted or future-dated persisted input with no journal mutation
   assert.throws(() => evaluatePilotPaperCycle(
     blankPilotPaperState('BTCUSDT'), cycle(BASE + BAR_15),
     {quote:marketQuote()}, SIGNAL_TIME), /PAPER_INVALID_TRANSITION_INPUT/);
+});
+
+
+test('OPEN monitored within SAME 15m candle: STOP settles without new V5 signal', () => {
+  const db = new VolatileDatabase();
+  const opened = apply(db, cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  assert.equal(opened.lastCycle, BASE);
+  const now = BASE + 6 * ONE_MIN;
+  const result = evaluatePilotOpenPosition(opened, {
+    minutes: minutes(4, 5, {5:{low:97, high:108}}),
+  }, now);
+  assert.equal(result.outcome, 'CHANGED');
+  assert.equal(result.state.open, null);
+  assert.equal(result.state.closed[0].cause, 'STOP');
+  assert.equal(result.state.closed[0].conservativeStopFirst, true);
+  assert.equal(result.state.lastCycle, BASE);
+  assert.equal(result.state.executionAuthorized, false);
+  assert.ok(result.state.realizedNetUsdt < 0);
+  const duplicate = evaluatePilotPaperCycle(result.state, cycle(), {}, now);
+  assert.equal(duplicate.outcome, 'SKIPPED');
+  assert.equal(duplicate.state.realizedNetUsdt, result.state.realizedNetUsdt);
+});
+
+test('open PAPER minute checkpoint advances cursor without advancing 15m or duplicating PnL', () => {
+  const opened = evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  const checkpoint = evaluatePilotOpenPosition(opened, {minutes: minutes(4, 5)},
+    BASE + 6 * ONE_MIN);
+  assert.equal(checkpoint.outcome, 'CHANGED');
+  assert.equal(checkpoint.state.open.lastCheckedMinuteOpen, BASE + 5 * ONE_MIN);
+  assert.equal(checkpoint.state.lastCycle, BASE);
+  const replay = evaluatePilotOpenPosition(checkpoint.state, {minutes: []},
+    BASE + 6 * ONE_MIN);
+  assert.equal(replay.outcome, 'SKIPPED');
+  assert.equal(replay.state.revision, checkpoint.state.revision);
+  assert.equal(replay.state.realizedNetUsdt, 0);
+  const advanced = evaluatePilotOpenPosition(checkpoint.state,
+    {minutes: [mbar(6)]}, BASE + 7 * ONE_MIN);
+  assert.equal(advanced.state.open.lastCheckedMinuteOpen, BASE + 6 * ONE_MIN);
+  assert.equal(advanced.state.lastCycle, BASE);
+  assert.equal(advanced.state.realizedNetUsdt, 0);
+});
+
+test('missing minute HALTs but can recover inside same 15m with no invented exit', () => {
+  const opened = evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  const halt = evaluatePilotOpenPosition(opened,
+    {errorCode:'MISSING_OR_INVALID_ONE_MINUTE_BAR'}, BASE + 6 * ONE_MIN);
+  assert.equal(halt.state.open.id, opened.open.id);
+  assert.equal(halt.state.closed.length, 0);
+  assert.equal(halt.state.haltReason, 'MISSING_OR_INVALID_ONE_MINUTE_BAR');
+  const repeated = evaluatePilotOpenPosition(halt.state,
+    {errorCode:'MISSING_OR_INVALID_ONE_MINUTE_BAR'}, BASE + 6 * ONE_MIN);
+  assert.equal(repeated.outcome, 'SKIPPED');
+  const resumed = evaluatePilotOpenPosition(halt.state, {
+    minutes: minutes(4, 6, {6:{high:108,low:99}}),
+  }, BASE + 7 * ONE_MIN);
+  assert.equal(resumed.state.haltReason, null);
+  assert.equal(resumed.state.open, null);
+  assert.equal(resumed.state.closed.length, 1);
+  assert.equal(resumed.state.closed[0].cause, 'TARGET');
+  assert.equal(resumed.state.lastCycle, BASE);
+});
+
+test('entry partial minute is never prematurely settled; FLAT monitor is rejected', () => {
+  const opened = evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  const tooEarly = evaluatePilotOpenPosition(opened, {minutes:[]},
+    BASE + 4 * ONE_MIN + 30_000);
+  assert.equal(tooEarly.outcome, 'SKIPPED');
+  assert.equal(tooEarly.state, opened);
+  assert.throws(() => evaluatePilotOpenPosition(
+    blankPilotPaperState('BTCUSDT'), {}, SIGNAL_TIME), /PAPER_INVALID_POSITION_MONITOR_INPUT/);
+});
+
+
+test('paper module registry keeps V5 active; new strategies remain inactive until reviewed switch', async () => {
+  const {
+    ACTIVE_PAPER_STRATEGY_ID,
+    listPaperStrategyModules,
+    registerPaperStrategyModule,
+    analyzeActivePaperStrategy,
+  } = await import('../app/lib/paper-strategy-modules.ts');
+  assert.equal(ACTIVE_PAPER_STRATEGY_ID, 'V5_UNMODIFIED');
+  assert.equal(listPaperStrategyModules().filter(x => x.active).length, 1);
+  assert.equal(listPaperStrategyModules().find(x => x.active).id, 'V5_UNMODIFIED');
+  const contender = {
+    id:'NEXT_ENTRY_V1',version:'0.0.1',executionAuthorized:false,
+    requiredTimeframes:['1w','1d','4h','15m','5m'],
+    analyze:() => { throw Error('UNAUTHORIZED_STRATEGY_CALLED'); },
+  };
+  registerPaperStrategyModule(contender);
+  assert.equal(listPaperStrategyModules().find(x => x.id === contender.id).active, false);
+  assert.throws(() => registerPaperStrategyModule(contender),
+    /PAPER_STRATEGY_MODULE_INVALID_OR_DUPLICATED/);
+  assert.throws(() => registerPaperStrategyModule({
+    ...contender,id:'LIVE_DANGEROUS',executionAuthorized:true,
+  }), /PAPER_STRATEGY_MODULE_INVALID_OR_DUPLICATED/);
+  assert.throws(() => analyzeActivePaperStrategy('BTCUSDT', {}, BASE),
+    /PAPER_ACTIVE_STRATEGY_OR_DATA_UNAVAILABLE/);
+});
+
+
+test('PAPER backup parser accepts a real legacy local export without receipts', async () => {
+  const { parseLocalPaperBackup } = await import('../core/paper/paper-backup.ts');
+  const names = ['BTCUSDT','ETHUSDT','SOLUSDT','LINKUSDT','SUIUSDT'];
+  const records = Object.fromEntries(names.map(s => [s,blankPilotPaperState(s)]));
+  records.BTCUSDT = evaluatePilotPaperCycle(records.BTCUSDT,
+    cycle(), {quote:marketQuote()}, SIGNAL_TIME).state;
+  const exportedAt = SIGNAL_TIME + ONE_MIN;
+  const old = {
+    format:'SMOKE_BROWSER_PAPER_BACKUP_V1', exportedAt,
+    paper:{version:1,records,notes:[]},
+  };
+  const parsed = parseLocalPaperBackup(old,names,exportedAt);
+  assert.equal(parsed.paper.records.BTCUSDT.open.symbol,'BTCUSDT');
+  assert.equal(parsed.paper.records.BTCUSDT.executionAuthorized,false);
+  assert.deepEqual(parsed.paper.receipts,[]);
+  assert.equal(parsed.exportedAt,exportedAt);
+});
+
+test('PAPER backup parser rejects injected execution authority or missing symbols', async () => {
+  const { parseLocalPaperBackup } = await import('../core/paper/paper-backup.ts');
+  const names = ['BTCUSDT','ETHUSDT'];
+  const now = SIGNAL_TIME + ONE_MIN;
+  const valid = {
+    format:'SMOKE_BROWSER_PAPER_BACKUP_V1',exportedAt:now,
+    paper:{version:1,records:Object.fromEntries(names.map(x=>[x,blankPilotPaperState(x)])),
+      notes:[],receipts:[]},
+  };
+  const check = input=>parseLocalPaperBackup(input,names,now);
+  assert.equal(check(valid).paper.version,1);
+  assert.throws(()=>check({...valid,exportedAt:now+60_000}),/PAPER_BACKUP_INVALID_ENVELOPE/);
+  assert.throws(()=>check({...valid,paper:{...valid.paper,records:{BTCUSDT:valid.paper.records.BTCUSDT}}}),/PAPER_BACKUP_INVALID_SYMBOL_SET/);
+  assert.throws(()=>check({...valid,paper:{...valid.paper,
+    records:{...valid.paper.records,BTCUSDT:{...valid.paper.records.BTCUSDT,executionAuthorized:true}}}}),/PAPER_BACKUP_INVALID_STATE/);
+});
+
+test('PAPER backup parser refuses fabricated trades, corrupted open position and forged receipts', async () => {
+  const { parseLocalPaperBackup } = await import('../core/paper/paper-backup.ts');
+  const names=['BTCUSDT'];
+  const now=SIGNAL_TIME+ONE_MIN;
+  const opened=evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(),{quote:marketQuote()},SIGNAL_TIME).state;
+  const base={format:'SMOKE_BROWSER_PAPER_BACKUP_V1',exportedAt:now,paper:{
+    version:1,records:{BTCUSDT:opened},notes:[],receipts:[]}};
+  const check = record=>parseLocalPaperBackup(record,names,now);
+  assert.equal(check(base).paper.records.BTCUSDT.open.id,opened.open.id);
+  assert.throws(()=>check({...base,paper:{...base.paper,records:{
+    BTCUSDT:{...opened,open:{...opened.open,stop:120}}}}}),/PAPER_BACKUP_INVALID_OPEN/);
+  assert.throws(()=>check({...base,paper:{...base.paper,records:{
+    BTCUSDT:{...opened,closed:[{id:'FAKE_WIN',netPnlUsdt:1000}]}}}}),/PAPER_BACKUP_INVALID_TRADE/);
+  assert.throws(()=>check({...base,paper:{...base.paper,receipts:[{
+    id:'FORGED_RECEIPT',executionAuthorized:true,
+  }]}}),/PAPER_BACKUP_INVALID_RECEIPT/);
+});
+
+
+test('minute backfill splits closed 1m periods across Binance page limits without gaps', async () => {
+  const { planClosedMinuteBackfill, verifyClosedMinutePage } = await import('../core/paper/minute-backfill.ts');
+  const start = BASE + 60_000;
+  const pages = planClosedMinuteBackfill(start, start + 2_000 * ONE_MIN);
+  assert.equal(pages.length,3);
+  assert.deepEqual(pages.map(x=>x.count),[900,900,201]);
+  for (const page of pages) {
+    assert.equal(page.endTime, page.startTime + page.count * ONE_MIN - 1);
+    const bars = Array.from({length:page.count},(_,i)=>({
+      time:page.startTime + i*ONE_MIN,open:100,high:101,low:99,close:100,volume:120,
+    }));
+    assert.doesNotThrow(()=>verifyClosedMinutePage(bars,page));
+  }
+  assert.equal(pages.at(-1).endTime,start + 2_001 * ONE_MIN - 1);
+});
+
+test('minute backfill rejects 7d+ stale recovery and gaps instead of inventing TP', async () => {
+  const { planClosedMinuteBackfill, verifyClosedMinutePage } = await import('../core/paper/minute-backfill.ts');
+  const start=BASE + ONE_MIN;
+  assert.throws(()=>planClosedMinuteBackfill(start,start+11_000*ONE_MIN),
+    /PAPER_MINUTE_BACKFILL_OVER_7_DAYS/);
+  assert.throws(()=>planClosedMinuteBackfill(start+7,start+ONE_MIN),
+    /PAPER_MINUTE_BACKFILL_INVALID_TIME/);
+  const page=planClosedMinuteBackfill(start,start+2*ONE_MIN)[0];
+  const good=[0,1,2].map(x=>({
+    time:start+x*ONE_MIN,open:100,high:101,low:99,close:100,volume:1,
+  }));
+  assert.throws(()=>verifyClosedMinutePage([good[0],good[2]],page),
+    /PAPER_MINUTE_BACKFILL_MISSING_OR_INVALID_PAGE/);
+  assert.throws(()=>verifyClosedMinutePage([{...good[0],high:98},good[1],good[2]],page),
+    /PAPER_MINUTE_BACKFILL_MISSING_OR_INVALID_PAGE/);
+});
+
+test('local PAPER storage guard preserves external revisions instead of overwriting', async () => {
+  const { assertPaperSnapshotUnchanged } = await import('../core/paper/paper-storage-guard.ts');
+  const memory={version:1,records:{BTCUSDT:blankPilotPaperState('BTCUSDT')},notes:[],receipts:[]};
+  const same=structuredClone(memory);
+  assert.doesNotThrow(()=>assertPaperSnapshotUnchanged(memory,same));
+  const newer=structuredClone(memory);
+  newer.records.BTCUSDT.revision++;
+  assert.throws(()=>assertPaperSnapshotUnchanged(memory,newer),
+    /PAPER_EXTERNAL_STORAGE_CHANGE_RELOAD_REQUIRED/);
+  const noteChanged=structuredClone(memory);
+  noteChanged.notes.push({symbol:'BTCUSDT',status:'ERROR',state:'DATA_FAILURE',
+    message:'PAPER_UNAVAILABLE',at:BASE});
+  assert.throws(()=>assertPaperSnapshotUnchanged(memory,noteChanged),
+    /PAPER_EXTERNAL_STORAGE_CHANGE_RELOAD_REQUIRED/);
+  assert.deepEqual(memory.records.BTCUSDT.closed,[]);
+  assert.equal(memory.records.BTCUSDT.executionAuthorized,false);
+});
+
+
+test('entry minute is only re-fetched before first checkpoint, not for 7-day-old checked positions', async () => {
+  const { planPaperMinuteWindow, planClosedMinuteBackfill } =
+    await import('../core/paper/minute-backfill.ts');
+  const entry = SIGNAL_TIME;
+  const firstEligible = BASE + 4 * ONE_MIN;
+  const initial = planPaperMinuteWindow({
+    enteredAt: entry, firstEligibleMinuteOpen: firstEligible,
+    lastCheckedMinuteOpen: null,
+  }, BASE + 7 * ONE_MIN);
+  assert.equal(initial.needsEntryAudit, true);
+  assert.equal(initial.requestStart, BASE + 3 * ONE_MIN);
+  assert.equal(initial.firstEligibleOpen, firstEligible);
+
+  const recentMinute = BASE + 7 * 24 * 60 * ONE_MIN + 5 * ONE_MIN;
+  const later = planPaperMinuteWindow({
+    enteredAt: entry, firstEligibleMinuteOpen: firstEligible,
+    lastCheckedMinuteOpen: recentMinute,
+  }, recentMinute + 2 * ONE_MIN);
+  assert.equal(later.needsEntryAudit, false);
+  assert.equal(later.requestStart, recentMinute + ONE_MIN);
+  assert.deepEqual(planClosedMinuteBackfill(later.requestStart, later.finalOpen)
+    .map(page => page.count), [1]);
+  assert.throws(() => planClosedMinuteBackfill(initial.requestStart, later.finalOpen),
+    /PAPER_MINUTE_BACKFILL_OVER_7_DAYS/);
+});
+
+test('paper minute cursor rejects forged future and pre-entry checkpoints', async () => {
+  const { planPaperMinuteWindow } = await import('../core/paper/minute-backfill.ts');
+  const good = {
+    enteredAt: SIGNAL_TIME,
+    firstEligibleMinuteOpen: BASE + 4 * ONE_MIN,
+    lastCheckedMinuteOpen: null,
+  };
+  const now = BASE + 8 * ONE_MIN;
+  assert.throws(() => planPaperMinuteWindow({
+    ...good, lastCheckedMinuteOpen: BASE + 2 * ONE_MIN,
+  }, now), /PAPER_MINUTE_CURSOR_INVALID/);
+  assert.throws(() => planPaperMinuteWindow({
+    ...good, lastCheckedMinuteOpen: BASE + 8 * ONE_MIN,
+  }, now), /PAPER_MINUTE_CURSOR_INVALID/);
+  assert.throws(() => planPaperMinuteWindow({
+    ...good, firstEligibleMinuteOpen: BASE + 5 * ONE_MIN,
+  }, now), /PAPER_MINUTE_CURSOR_INVALID/);
+});
+
+
+test('PAPER restore validates modeled net/gross PnL and risk against actually settled trade', async () => {
+  const { parseLocalPaperBackup } = await import('../core/paper/paper-backup.ts');
+  const opened=evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(),{quote:marketQuote()},SIGNAL_TIME).state;
+  const settled=evaluatePilotOpenPosition(opened,{
+    minutes:minutes(4,5,{5:{high:108,low:99}}),
+  },BASE+6*ONE_MIN).state;
+  assert.equal(settled.closed.length,1);
+  const backup={
+    format:'SMOKE_BROWSER_PAPER_BACKUP_V1',
+    exportedAt:BASE+7*ONE_MIN,
+    paper:{version:1,records:{BTCUSDT:settled},notes:[],receipts:[]},
+  };
+  const parsed=parseLocalPaperBackup(backup,['BTCUSDT'],BASE+7*ONE_MIN);
+  assert.equal(parsed.paper.records.BTCUSDT.closed[0].cause,'TARGET');
+  const corrupted={...settled,closed:[{
+    ...settled.closed[0],netPnlUsdt:settled.closed[0].netPnlUsdt+100,
+  }]};
+  assert.throws(()=>parseLocalPaperBackup({...backup,paper:{
+    ...backup.paper,records:{BTCUSDT:corrupted},
+  }},['BTCUSDT'],BASE+7*ONE_MIN),/PAPER_BACKUP_INVALID_TRADE/);
+  const corruptedGross={...settled,closed:[{
+    ...settled.closed[0],grossPnlUsdt:999,
+  }]};
+  assert.throws(()=>parseLocalPaperBackup({...backup,paper:{
+    ...backup.paper,records:{BTCUSDT:corruptedGross},
+  }},['BTCUSDT'],BASE+7*ONE_MIN),/PAPER_BACKUP_INVALID_TRADE/);
+  const corruptedSide={...settled,closed:[{
+    ...settled.closed[0],side:'short',
+  }]};
+  assert.throws(()=>parseLocalPaperBackup({...backup,paper:{
+    ...backup.paper,records:{BTCUSDT:corruptedSide},
+  }},['BTCUSDT'],BASE+7*ONE_MIN),/PAPER_BACKUP_INVALID_TRADE/);
+});
+
+test('PAPER restore rejects modified risk budget on otherwise valid open position', async () => {
+  const {parseLocalPaperBackup}=await import('../core/paper/paper-backup.ts');
+  const opened=evaluatePilotPaperCycle(blankPilotPaperState('BTCUSDT'),
+    cycle(),{quote:marketQuote()},SIGNAL_TIME).state;
+  const packet={format:'SMOKE_BROWSER_PAPER_BACKUP_V1',exportedAt:SIGNAL_TIME+ONE_MIN,
+    paper:{version:1,records:{BTCUSDT:opened},notes:[],receipts:[]}};
+  assert.equal(parseLocalPaperBackup(packet,['BTCUSDT'],SIGNAL_TIME+ONE_MIN)
+    .paper.records.BTCUSDT.open.id,opened.open.id);
+  const forged={...opened,open:{...opened.open,
+    initialRiskUsdt:opened.open.initialRiskUsdt+3}};
+  assert.throws(()=>parseLocalPaperBackup({...packet,paper:{
+    ...packet.paper,records:{BTCUSDT:forged},
+  }},['BTCUSDT'],SIGNAL_TIME+ONE_MIN),/PAPER_BACKUP_INVALID_OPEN/);
+});
+
+
+test('PAPER backup rejects manipulated lifetime PnL and revision-zero phantom wins', async () => {
+  const {parseLocalPaperBackup}=await import('../core/paper/paper-backup.ts');
+  const state=blankPilotPaperState('BTCUSDT');
+  const packet={
+    format:'SMOKE_BROWSER_PAPER_BACKUP_V1',exportedAt:SIGNAL_TIME,
+    paper:{version:1,records:{BTCUSDT:state},notes:[],receipts:[]},
+  };
+  const check=record=>parseLocalPaperBackup({...packet,paper:{
+    ...packet.paper,records:{BTCUSDT:record},
+  }},['BTCUSDT'],SIGNAL_TIME);
+  assert.doesNotThrow(()=>check(state));
+  assert.throws(()=>check({...state,realizedNetUsdt:999}),
+    /PAPER_BACKUP_INVALID_TOTAL_PNL/);
+
+  const opened=evaluatePilotPaperCycle(state,cycle(),{quote:marketQuote()},SIGNAL_TIME).state;
+  const closed=evaluatePilotOpenPosition(opened,{
+    minutes:minutes(4,5,{5:{low:97,high:101}}),
+  },BASE+6*ONE_MIN).state;
+  const now=BASE+7*ONE_MIN;
+  assert.doesNotThrow(()=>parseLocalPaperBackup({...packet,exportedAt:now,paper:{
+    ...packet.paper,records:{BTCUSDT:closed},
+  }},['BTCUSDT'],now));
+  assert.throws(()=>parseLocalPaperBackup({...packet,exportedAt:now,paper:{
+    ...packet.paper,records:{BTCUSDT:{...closed,realizedNetUsdt:100_000}},
+  }},['BTCUSDT'],now),/PAPER_BACKUP_INVALID_TOTAL_PNL/);
+  assert.throws(()=>check({...state,open:opened.open}),
+    /PAPER_BACKUP_INVALID_INITIAL_STATE/);
+});
+
+
+test('transient strategy fetch failure does not consume READY opportunity in same closed candle', () => {
+  const db = new VolatileDatabase();
+  const unavailable = cycle(BASE, {status:'ERROR',assessments:[]});
+  const failed = apply(db, unavailable,{},SIGNAL_TIME);
+  assert.equal(failed.outcome,'CHANGED');
+  assert.equal(failed.state.lastEntryAttempt,'STRATEGY_DATA_UNAVAILABLE');
+  assert.equal(failed.state.lastCycle,null);
+  assert.equal(failed.state.open,null);
+  const repeat = apply(db, unavailable,{},SIGNAL_TIME + 1_000);
+  assert.equal(repeat.outcome,'SKIPPED');
+  assert.equal(db.read('BTCUSDT').revision,failed.state.revision);
+  const recovered=apply(db,cycle(),{quote:marketQuote()},SIGNAL_TIME + 2_000);
+  assert.equal(recovered.outcome,'CHANGED');
+  assert.equal(recovered.state.lastCycle,BASE);
+  assert.equal(recovered.state.open?.signalCloseAt,BASE);
+  assert.equal(recovered.state.executionAuthorized,false);
+  const duplicate=apply(db,cycle(),{quote:marketQuote()},SIGNAL_TIME + 3_000);
+  assert.equal(duplicate.outcome,'SKIPPED');
+  assert.equal(db.read('BTCUSDT').open.id,recovered.state.open.id);
+  assert.equal(db.read('BTCUSDT').realizedNetUsdt,0);
+});
+
+test('transient missing quote does not burn a READY candle; retry expires by existing policy', () => {
+  const db = new VolatileDatabase();
+  const unavailable=apply(db,cycle(),{errorCode:'PAPER_QUOTE_UNAVAILABLE'},SIGNAL_TIME);
+  assert.equal(unavailable.state.lastCycle,null);
+  assert.equal(unavailable.state.lastEntryAttempt,'PAPER_QUOTE_UNAVAILABLE');
+  assert.equal(unavailable.state.open,null);
+  const repeat=apply(db,cycle(),{errorCode:'PAPER_QUOTE_UNAVAILABLE'},SIGNAL_TIME+1000);
+  assert.equal(repeat.outcome,'SKIPPED');
+  assert.equal(repeat.state.revision,unavailable.state.revision);
+  const recovered=apply(db,cycle(),{quote:marketQuote()},SIGNAL_TIME+2000);
+  assert.equal(recovered.state.open?.signalCloseAt,BASE);
+  assert.equal(recovered.state.lastCycle,BASE);
+  assert.equal(recovered.state.executionAuthorized,false);
+
+  const expiredDb=new VolatileDatabase();
+  apply(expiredDb,cycle(),{errorCode:'PAPER_QUOTE_UNAVAILABLE'},SIGNAL_TIME);
+  const late=apply(expiredDb,cycle(),{quote:marketQuote(BASE + 14*ONE_MIN)},
+    BASE+14*ONE_MIN);
+  assert.equal(late.state.open,null);
+  assert.equal(late.state.lastEntryAttempt,'STALE_OR_FUTURE_SIGNAL');
+  assert.equal(late.state.lastCycle,BASE);
 });

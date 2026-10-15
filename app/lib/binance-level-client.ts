@@ -1,4 +1,6 @@
 import type { Candle, Timeframe, TimeframeBundle } from "./mtf-level-strategy";
+import {loadClosedKlineHistory} from "./kline-range-core.ts";
+import {validateBinanceUsdMKlinePage} from '../../core/market/binance-kline-page.ts';
 
 import { DIRECT_REST, fetchFuturesPublic } from "./binance-public-transport.ts";
 const WS = "wss://fstream.binance.com/ws";
@@ -9,27 +11,8 @@ export const INTERVALS: Record<Timeframe, string> = {
   "15m": "15m",
   "5m": "5m",
 };
-const INTERVAL_MS: Record<Timeframe, number> = {
-  "1w": 7 * 24 * 60 * 60_000,
-  "1d": 24 * 60 * 60_000,
-  "4h": 4 * 60 * 60_000,
-  "15m": 15 * 60_000,
-  "5m": 5 * 60_000,
-};
-
 export function binanceRestBase(): string {
   return DIRECT_REST;
-}
-
-function parseKline(row: unknown[]): Candle {
-  return {
-    time: Number(row[0]),
-    open: Number(row[1]),
-    high: Number(row[2]),
-    low: Number(row[3]),
-    close: Number(row[4]),
-    volume: Number(row[5]),
-  };
 }
 
 function sleep(milliseconds: number): Promise<void> {
@@ -57,7 +40,7 @@ export async function fetchKlines(
       });
       if (response.ok) {
         const payload = await response.json() as unknown[][];
-        return payload.map(parseKline).filter((candle) => Object.values(candle).every(Number.isFinite));
+        return validateBinanceUsdMKlinePage(payload,timeframe,Math.min(1500,options.limit??500));
       }
       lastError = new Error(`Binance klines ${response.status}`);
       if (response.status !== 429 && response.status < 500) throw lastError;
@@ -79,32 +62,10 @@ export async function fetchKlinesRange(
   endTime: number,
   signal?: AbortSignal,
 ): Promise<Candle[]> {
-  const rows: Candle[] = [];
-  let cursorEnd = Math.min(endTime, Date.now());
-  const estimatedPages = Math.ceil((cursorEnd - startTime) / INTERVAL_MS[timeframe] / 1500) + 3;
-  const maxPages = Math.max(3, Math.min(80, estimatedPages));
-
-  for (let page = 0; page < maxPages && cursorEnd >= startTime; page += 1) {
-    const batch = await fetchKlines(symbol, timeframe, {
-      limit: 1500,
-      startTime,
-      endTime: cursorEnd,
-      signal,
-    });
-    if (!batch.length) break;
-    rows.unshift(...batch);
-    const firstOpenTime = batch[0].time;
-    if (firstOpenTime <= startTime || batch.length < 1500) break;
-    const nextEnd = firstOpenTime - 1;
-    if (nextEnd >= cursorEnd) break;
-    cursorEnd = nextEnd;
-    await sleep(70);
-  }
-
-  return rows
-    .filter((candle) => candle.time >= startTime && candle.time <= endTime)
-    .filter((candle, index, all) => all.findIndex((item) => item.time === candle.time) === index)
-    .sort((a, b) => a.time - b.time);
+  return loadClosedKlineHistory(
+    timeframe,startTime,endTime,
+    query=>fetchKlines(symbol,timeframe,{...query,signal}),
+  );
 }
 
 export async function fetchStrategyBundle(symbol: string, signal?: AbortSignal): Promise<TimeframeBundle> {
