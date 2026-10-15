@@ -1,5 +1,32 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-15 — P9 CRASH-SAFE PAPER ACCOUNTING: reject forged trade after full reload
+
+**Context:** P8 published Chromium regressions found correct missing-minute HALT/recovery and stale-tab isolation. Continued adversarial verification must not conflate an in-memory deep comparison with validation of already-persisted financial data after a fresh page load.
+
+### Independent falsification and root cause
+- `0c4d4bf6fa43caa3e21cc2b4e6945308fa46af63`: added **failing-first** published Chromium regression to `scripts/paper_open_reload_browser_e2e.mjs`. After exactly one deterministic synthetic STOP is saved, modify the saved trade's `exit` by +0.05 *without* changing `revision`, `grossPnlUsdt`, `netPnlUsdt`, `realizedNetUsdt` or receipt IDs; then reload entire site. Required behavior: show stored-journal unreadable error, disable PAPER processing, preserve raw tampered bytes for manual recovery.
+- **Confirmed RED evidence:** GitHub Actions `paper-backup-browser-e2e` run `38734257535` initial job `116419414631` FAILED at new expected error text after page reload (Playwright timeout). Legacy `readSnapshot` validated only basic schema, allowing an inconsistent persisted trade to become the new in-memory baseline on reload. Earlier `PAPER_STORAGE_MISMATCH` check only caught modifications while the page was still open. Original user data was not accessed; the test used a disposable anonymous Chromium profile.
+- **Fix deployed on actual AppDeploy Vite site:** in `app/components/PilotBrowserPaper.tsx`, `readSnapshot()` retains receipt-less legacy V1 normalization then calls existing pure `parseLocalPaperBackup` with `SMOKE_BROWSER_PAPER_BACKUP_V1` envelope before accepting any saved PAPER position/trade/note/receipt. That checks financial consistency of gross/net PnL and observed trade exit, open-position risk metrics, timestamps, receipt fields and symbol set. Invalid snapshots produce an alert and disable new PAPER writes **without deleting or rewriting the original localStorage bytes**. Existing read-only PAPER/trading behavior and frozen V5 rules unchanged. Updated published `tests/tests.txt` Test 11 with fresh-page corruption acceptance.
+- **New AppDeploy snapshot `1792067122969` status `ready`** (as checked after deploy); no frontend/backend errors and no QA snapshot network errors; direct published source reread verified strict startup validation. URL remains `https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/`. No GitHub Next/Vinext code overwrite, no automated market cron, no live orders, no owner records touched.
+
+### After-fix isolated Chromium QA
+- Re-ran failing job from workflow `38734257535`. **Attempt 2** job `116420528313`: backup export and original PAPER OPEN/reload test PASSED including new flag `corruptPersistedTradeBlockedAfterReload=true`, but the P8 second-tab test failed. An independent diagnostic commit `c389bc3f5790ab0e2832ba1f67fd582454b904bc` confirmed second tab's startup lockout `Сохранённый локальный PAPER-журнал не удалось прочитать`, i.e. strict validator saw future-dated receipts.
+- Root cause **isolated to synthetic clocks in the test**, not a demonstrated real-user regression: tab A's mock clock had advanced a few real seconds while tab B installed its **old original** test timestamp; B therefore viewed A's just-written receipt timestamps as future-dated. `b52289ecef1a7ef8ae89e4842e29188d66cf95c3` fixed test setup by reading tab A's current simulated wall-clock time immediately before installing tab B's clock. Real tabs in the same browser share system wall-clock time; startup correctly rejects genuinely future-dated data.
+- **Final all-green browser QA:** workflow `paper-backup-browser-e2e` run **`38735068431`**, job **`116422183863`**, **SUCCESS**, all 3 independently logged phases:
+  1. `PAPER_LOCAL_BACKUP_RESTORE PASS`: valid JSON export and restore, malicious and forged PnL rejected, cancel/confirm, reload, cross-tab readback, old revision blocked.
+  2. `PAPER_OPEN_RELOAD_MINUTE_IDEMPOTENCY PASS`: OPEN/checkpoint/reload/STOP-first/single PnL, byte-consistent second tab, changed stored trade detected while page open **and again after fresh reload** with `corruptPersistedTradeBlockedAfterReload=true`.
+  3. `PAPER_GAP_RECOVERY_CROSSTAB_RACE PASS`: omitted closed 1m bar HALT, repeated gap no duplicate, correction clears HALT, controlled overlapping second tab's stale write blocked, legitimate checkpoint retained, STOP-first single close, no duplicate PnL.
+- Synthetic tests use fapi.binance.com **route-intercepted fixtures**, not true exchange access or real fills. The published adapter was tested, but no 24/7 hosting, real market fill evidence, owner-account cloud restore, external database disaster recovery or truly atomic cross-tab localStorage CAS has been proven. Preserve these release gates.
+
+### Further work
+- Test full valid non-empty PAPER backup/import through read-only cloud copy path in isolated credentials, if a controlled test account becomes available; do not use owner's real account for destructive QA.
+- Add deterministic first-entry ambiguous-minute HALT and separate LONG/SHORT target net fee arithmetic with negative/failure case coverage; keep the unchanged original V5 untouched.
+- The server-side Binance HTTP451 egress blocker stays intentionally deferred.
+
+---
+
+
 ## 2026-10-15 — P8 PUBLIC-BROWSER ADVERSARIAL QA: missing 1m HALT/recovery and overlapping-tab stale write
 
 **Owner request:** Continue SMOKE Trading OS without changing V5, enabling live trading, or revisiting deferred Binance USD-M HTTP 451 platform move.
