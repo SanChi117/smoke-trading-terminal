@@ -163,13 +163,27 @@ try{
   assert.equal(tampered.records.BTCUSDT.revision,verifiedRevision);
   assert.equal(tampered.records.BTCUSDT.realizedNetUsdt,verifiedPnl);
 
+  // Fresh reload must NOT bless an internally inconsistent trade. The
+  // previous shallow startup parser accepted a forged exit price even though
+  // the booked gross/net PnL stayed unchanged, making corrupted data look OK.
+  await page.reload({waitUntil:'domcontentloaded',timeout:30000});
+  await page.getByRole('alert').filter({
+    hasText:/Сохранённый локальный PAPER-журнал не удалось прочитать/,
+  }).waitFor({state:'visible',timeout:12000});
+  assert.equal(await page.getByRole('button',{
+    name:'Обработать очередной закрытый бар (5 монет)',
+  }).isDisabled(),true,'CORRUPT_TRADE_REHYDRATED_AS_VALID');
+  assert.deepEqual(await read(),tampered,
+    'INVALID_JOURNAL_WAS_SILENTLY_REWRITTEN_ON_RELOAD');
+
   console.log(JSON.stringify({
     phase:'PAPER_OPEN_RELOAD_MINUTE_IDEMPOTENCY',result:'PASS',
     initialOpenPreserved:true,closedMinuteCheckpoint:true,
     restartOpenPreserved:true,replayedMinuteSkipped:true,
     stopFirstOnBothTPandSL:true,closeReceiptExactlyOnce:true,
     closedPnlReloadPreserved:true,noDoubleCountAfterReload:true,
-    secondTabConsistent:true,fullSnapshotTamperRejected:true,verifiedRevision,
+    secondTabConsistent:true,fullSnapshotTamperRejected:true, 
+    corruptPersistedTradeBlockedAfterReload:true,verifiedRevision,
     syntheticRequests:requests.length,tradeCount:1,realOrders:false,
     neverUsedRealBinance:true,ownerDataUntouched:true,
   }));
