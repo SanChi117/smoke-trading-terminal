@@ -199,6 +199,43 @@ try{
     .filter({hasText:'ETHUSDT'}).locator('td').last().textContent();
   assert.ok(recoveredStatus&&recoveredStatus.trim()!=='НЕ ПРОВЕРЕН',
     'RECOVERED_ETH_STILL_UNCHECKED');
+  // A status-200 Binance response can still be corrupt. Inject one missing
+  // 15m bar into ETH history, assert the scanner refuses it, then recover.
+  const invalidEthKlines=async route=>{
+    const u=new URL(route.request().url());
+    if(u.pathname==='/fapi/v1/klines' &&
+       u.searchParams.get('symbol')==='ETHUSDT' &&
+       u.searchParams.get('interval')==='15m' &&
+       !u.searchParams.has('startTime')){
+      const data=klines(u.searchParams);
+      assert.ok(data.length>30,'ETH_FIXTURE_TOO_SHORT');
+      data.splice(data.length-7,1);
+      await route.fulfill({
+        status:200,contentType:'application/json',
+        headers:{'Access-Control-Allow-Origin':'*'},
+        body:JSON.stringify(data),
+      });
+    }else await route.fallback();
+  };
+  await page.route('https://fapi.binance.com/fapi/v1/klines?*',invalidEthKlines);
+  await page.getByRole('button',{name:'Сканер',exact:true}).first().click();
+  const invalidEth=page.locator('tbody tr').filter({hasText:'ETHUSDT'});
+  await invalidEth.click();
+  await page.getByRole('heading',{name:/ETH\\/USDT Perpetual/})
+    .waitFor({state:'visible'});
+  await page.getByRole('alert').getByText(/USD_M_KLINE_GAPPED_OR_DUPLICATED/)
+    .waitFor({state:'visible',timeout:50_000});
+  await page.getByRole('button',{name:'Сканер',exact:true}).first().click();
+  await page.locator('tbody tr').filter({hasText:'ETHUSDT'})
+    .getByText('DATA ERROR',{exact:true})
+    .waitFor({state:'visible',timeout:20_000});
+  await page.unroute('https://fapi.binance.com/fapi/v1/klines?*',invalidEthKlines);
+  await invalidEth.click();
+  await page.getByRole('button',{name:'Обновить',exact:true}).first().click();
+  await page.getByRole('button',{name:'Сканер',exact:true}).first().click();
+  await page.locator('tbody tr').filter({hasText:'ETHUSDT'})
+    .getByText('DATA ERROR',{exact:true})
+    .waitFor({state:'hidden',timeout:50_000});
   // Mobile Chromium runs separately in a disposable profile.
   const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
   await mobile.route('https://fapi.binance.com/**',binanceFixture);
@@ -228,6 +265,6 @@ try{
     chartTF:['1m','15m'],scannerRows:19,
     backtest7Days:true,backtest30Days:true,chartKeyboardPanZoomSaved:true,mobileTFAndScanner:true,backtestErrorClearsOldMetrics:true,scanErrorShownForETH:true,recoveredSymbolErrorCleared:true,forwardPages5m:historic5m.length,
     forwardPages15m:historic15m.length,longForwardPages5m:long5m.length,longForwardPages15m:long15m.length,
-    neverUsedRealBinance:true,noTradingOrders:true,
+    corruptStatus200KlineFailsClosedAndRecovers:true,\n    neverUsedRealBinance:true,noTradingOrders:true,
   }));
 }finally{await browser.close();}
