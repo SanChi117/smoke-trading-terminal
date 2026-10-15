@@ -175,6 +175,21 @@ test('standalone PAPER service: HTTP auth, Postgres persisted state, restart, ow
     assert.equal(response.status,503);
     assert.equal((await response.json()).error,'PAPER_DATABASE_OR_LEDGER_UNAVAILABLE');
 
+    // Financially inconsistent JSONB (but with an unchanged legal revision)
+    // must also fail both /status and /journal. A shallow HTTP status check
+    // previously exposed this bogus total as if the ledger were healthy.
+    await pool.query(
+      "UPDATE smoke_paper_state_v1 SET document = "+
+      "jsonb_set(jsonb_set(document,'{executionAuthorized}',"+
+      "'false'::jsonb),'{realizedNetUsdt}','42'::jsonb) "+
+      "WHERE ledger_key=$1 AND symbol=$2",
+      [key,symbol],
+    );
+    response=await probe(port,'/status',{headers});
+    assert.equal(response.status,503,'FINANCIAL_CORRUPTION_STATUS_MUST_FAIL');
+    response=await probe(port,'/journal/BTCUSDT',{headers});
+    assert.equal(response.status,503,'FINANCIAL_CORRUPTION_JOURNAL_MUST_FAIL');
+
     console.log(JSON.stringify({
       suite:'PORTABLE_PAPER_STANDALONE_HTTP_E2E',result:'PASS',
       processRestart:true,postgresReadback:true,ledgerIsolated:true,
