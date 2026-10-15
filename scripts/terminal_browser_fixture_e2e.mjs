@@ -221,11 +221,11 @@ try{
   await page.getByRole('button',{name:'Сканер',exact:true}).first().click();
   // Force a real symbol transition so the selected-ETH cache cannot mask corruption.
   await page.locator('tbody tr').filter({hasText:'BTCUSDT'}).click();
-  await page.getByRole('heading',{name:/BTC\\/USDT Perpetual/}).waitFor({state:'visible'});
+  await page.getByRole('heading',{name:/BTC\/USDT Perpetual/}).waitFor({state:'visible'});
   await page.getByRole('button',{name:'Сканер',exact:true}).first().click();
   const invalidEth=page.locator('tbody tr').filter({hasText:'ETHUSDT'});
   await invalidEth.click();
-  await page.getByRole('heading',{name:/ETH\\/USDT Perpetual/})
+  await page.getByRole('heading',{name:/ETH\/USDT Perpetual/})
     .waitFor({state:'visible'});
   await page.getByRole('alert').getByText(/USD_M_KLINE_GAPPED_OR_DUPLICATED/)
     .waitFor({state:'visible',timeout:50_000});
