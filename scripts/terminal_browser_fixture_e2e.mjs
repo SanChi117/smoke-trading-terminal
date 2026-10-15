@@ -269,6 +269,7 @@ try{
     chartTF:['1m','15m'],scannerRows:19,
     backtest7Days:true,backtest30Days:true,chartKeyboardPanZoomSaved:true,mobileTFAndScanner:true,backtestErrorClearsOldMetrics:true,scanErrorShownForETH:true,recoveredSymbolErrorCleared:true,forwardPages5m:historic5m.length,
     forwardPages15m:historic15m.length,longForwardPages5m:long5m.length,longForwardPages15m:long15m.length,
-    corruptStatus200KlineFailsClosedAndRecovers:true,\n    neverUsedRealBinance:true,noTradingOrders:true,
+    corruptStatus200KlineFailsClosedAndRecovers:true,
+    neverUsedRealBinance:true,noTradingOrders:true,
   }));
 }finally{await browser.close();}
