@@ -7,6 +7,7 @@ on:
       - 'core/paper/paper-pilot-state.ts'
       - 'core/paper/paper-lifecycle.ts'
       - 'tests/portable-paper-runtime.test.mjs'
+      - 'tests/paper-accounting-adversarial.test.mjs'
       - '.github/workflows/portable-paper-runtime-qa.yml'
   pull_request:
     paths:
@@ -14,6 +15,7 @@ on:
       - 'core/paper/paper-pilot-state.ts'
       - 'core/paper/paper-lifecycle.ts'
       - 'tests/portable-paper-runtime.test.mjs'
+      - 'tests/paper-accounting-adversarial.test.mjs'
       - '.github/workflows/portable-paper-runtime-qa.yml'
   workflow_dispatch:
 
@@ -32,6 +34,6 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Test autonomous PAPER boundary with synthetic feeds
-        run: node --experimental-strip-types --test tests/portable-paper-runtime.test.mjs
+        run: node --experimental-strip-types --test tests/portable-paper-runtime.test.mjs tests/paper-accounting-adversarial.test.mjs
       - name: Verify TypeScript contracts
         run: npx tsc --noEmit --skipLibCheck --target es2022 --module nodenext --moduleResolution nodenext --strict --allowImportingTsExtensions core/paper/portable-paper-runtime.ts
