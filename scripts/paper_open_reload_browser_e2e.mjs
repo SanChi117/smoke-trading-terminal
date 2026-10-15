@@ -142,13 +142,34 @@ try{
     'SAME_PROFILE_TAB_PNL_MISMATCH');
   assert.equal(other.records.BTCUSDT.revision,verifiedRevision);
   await tab.close();
+
+  // Adversarial: someone changes the stored exit price without incrementing
+  // revision or touching totals, receipts, ids or trade count. A shallow
+  // "Verify saved" used to incorrectly report PASS for this changed trade.
+  await page.evaluate(key=>{
+    const snapshot=JSON.parse(localStorage.getItem(key));
+    snapshot.records.BTCUSDT.closed[0].exit+=0.05;
+    localStorage.setItem(key,JSON.stringify(snapshot));
+  },STORE);
+  await page.getByRole('button',{name:'Проверить сохранение'}).click();
+  await page.getByText(/ПРОВЕРКА НЕ ПРОЙДЕНА/)
+    .waitFor({state:'visible',timeout:10000});
+  await page.getByText(/PAPER_STORAGE_MISMATCH/)
+    .waitFor({state:'visible',timeout:10000});
+  assert.equal(await page.getByRole('button',{
+    name:'Обработать очередной закрытый бар (5 монет)',
+  }).isDisabled(),true,'TAMPERED_JOURNAL_DID_NOT_BLOCK_MONITOR');
+  const tampered=await read();
+  assert.equal(tampered.records.BTCUSDT.revision,verifiedRevision);
+  assert.equal(tampered.records.BTCUSDT.realizedNetUsdt,verifiedPnl);
+
   console.log(JSON.stringify({
     phase:'PAPER_OPEN_RELOAD_MINUTE_IDEMPOTENCY',result:'PASS',
     initialOpenPreserved:true,closedMinuteCheckpoint:true,
     restartOpenPreserved:true,replayedMinuteSkipped:true,
     stopFirstOnBothTPandSL:true,closeReceiptExactlyOnce:true,
     closedPnlReloadPreserved:true,noDoubleCountAfterReload:true,
-    secondTabConsistent:true,verifiedRevision,
+    secondTabConsistent:true,fullSnapshotTamperRejected:true,verifiedRevision,
     syntheticRequests:requests.length,tradeCount:1,realOrders:false,
     neverUsedRealBinance:true,ownerDataUntouched:true,
   }));
