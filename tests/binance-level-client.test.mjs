@@ -75,7 +75,7 @@ test('gaps, duplicate/out-of-order candles and OHLC corruption fail closed',asyn
     await withMockBinance(bad,async()=>{
       await assert.rejects(
         fetchKlinesRange('TESTUSDT','5m',t,t+rows.length*step),
-        /HISTORY_(GAP_OR_CORRUPT_CANDLE|INCOMPLETE_PAGE)/,
+        /(HISTORY_(GAP_OR_CORRUPT_CANDLE|INCOMPLETE_PAGE)|USD_M_KLINE_(GAPPED_OR_DUPLICATED|INVALID_OHLC_OR_CLOCK))/,
       );
     });
   }
