@@ -1,5 +1,6 @@
 import type {PilotPaperState} from './paper-pilot-state.ts';
 import type {PortablePaperStore} from './portable-paper-runtime.ts';
+import {parseLocalPaperBackup} from './paper-backup.ts';
 
 // The application injects a PostgreSQL driver's query method.
 // No database credentials, pool, AppDeploy SDK, or browser dependency here.
@@ -9,6 +10,26 @@ export type PaperPgQuery = (
 
 const LEDGER_KEY=/^[a-z][a-z0-9_-]{1,48}$/;
 const SYMBOL=/^[A-Z0-9]{3,20}USDT$/;
+
+// Validate persisted PAPER money independently of the revision CAS.
+// A valid-looking revision and JSON object are not proof that a restored
+// fee, exit price, booked PnL or realized R were recorded consistently.
+// Reuse the frozen V1 backup validator, rather than duplicating PnL formulas.
+function assertStoredPaperIntegrity(
+  symbol:string, state:PilotPaperState, failureCode:string,
+):void {
+  const now=Date.now();
+  try {
+    parseLocalPaperBackup({
+      format:'SMOKE_BROWSER_PAPER_BACKUP_V1',
+      exportedAt:now,
+      paper:{version:1,records:{[symbol]:state},notes:[],receipts:[]},
+    },[symbol],now);
+  }catch{
+    throw Error(failureCode);
+  }
+}
+
 
 // Atomic optimistic concurrency, including first-insert races.
 // A missing row is inserted ONLY for expected revision 0.
@@ -56,6 +77,8 @@ export function createPostgresPaperStore(
           (payload as PilotPaperState).revision !== Number(row.revision)) {
         throw Error('PAPER_PG_REVISION_MISMATCH');
       }
+      assertStoredPaperIntegrity(symbol,payload as PilotPaperState,
+        'PAPER_PG_CORRUPT_FINANCIAL_RECORD');
       return payload as PilotPaperState;
     },
 
@@ -72,6 +95,7 @@ export function createPostgresPaperStore(
           next.revision !== previousRevision + 1) {
         throw Error('PAPER_PG_INVALID_WRITE');
       }
+      assertStoredPaperIntegrity(symbol,next,'PAPER_PG_INVALID_FINANCIAL_WRITE');
       const json = JSON.stringify(next);
       if (typeof json !== 'string' || json.length > 500_000)
         throw Error('PAPER_PG_INVALID_WRITE_SIZE');
