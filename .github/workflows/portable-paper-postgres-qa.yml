@@ -7,6 +7,7 @@ on:
       - 'core/paper/portable-paper-runtime.ts'
       - 'deployment/postgres/**'
       - 'tests/postgres-paper-store.integration.mjs'
+      - 'scripts/postgres-paper-disaster-drill.mjs'
       - '.github/workflows/portable-paper-postgres-qa.yml'
   pull_request:
     paths:
@@ -14,6 +15,7 @@ on:
       - 'core/paper/portable-paper-runtime.ts'
       - 'deployment/postgres/**'
       - 'tests/postgres-paper-store.integration.mjs'
+      - 'scripts/postgres-paper-disaster-drill.mjs'
       - '.github/workflows/portable-paper-postgres-qa.yml'
   workflow_dispatch:
 
@@ -53,3 +55,36 @@ jobs:
         run: npx tsc --noEmit --skipLibCheck --target es2022 --module nodenext --moduleResolution nodenext --strict --allowImportingTsExtensions core/paper/portable-paper-runtime.ts core/paper/postgres-paper-store.ts
       - name: Run PostgreSQL-backed V5 PAPER persistence and CAS tests
         run: node --experimental-strip-types --test tests/postgres-paper-store.integration.mjs
+      - name: Syntax check isolated PostgreSQL disaster drill
+        run: node --check scripts/postgres-paper-disaster-drill.mjs
+      - name: Seed real PostgreSQL ledger with synthetic closed STOP, open SHORT and WATCH
+        env:
+          SMOKE_TEST_RESTORED_PG_URL: postgresql://smoke_test:smoke_ci_only@127.0.0.1:5432/smoke_restore_ci
+          SMOKE_DRILL_EXPECTED_FILE: ${{ runner.temp }}/paper-drill-expected.json
+        run: node --experimental-strip-types scripts/postgres-paper-disaster-drill.mjs seed
+      - name: Create actual PostgreSQL v16 archive and list its contents
+        run: |
+          set -Eeuo pipefail
+          docker run --rm --network host -e PGPASSWORD=smoke_ci_only postgres:16 \
+            pg_dump -h 127.0.0.1 -U smoke_test -d smoke_ci \
+            --format=custom --no-owner > "$RUNNER_TEMP/smoke-ci-backup.dump"
+          test -s "$RUNNER_TEMP/smoke-ci-backup.dump"
+          docker run --rm -i --network host postgres:16 pg_restore --list \
+            < "$RUNNER_TEMP/smoke-ci-backup.dump" | grep -q 'smoke_paper_state_v1'
+          sha256sum "$RUNNER_TEMP/smoke-ci-backup.dump"
+      - name: Provision clean destination independent of primary database
+        env:
+          SMOKE_TEST_RESTORED_PG_URL: postgresql://smoke_test:smoke_ci_only@127.0.0.1:5432/smoke_restore_ci
+          SMOKE_DRILL_EXPECTED_FILE: ${{ runner.temp }}/paper-drill-expected.json
+        run: node --experimental-strip-types scripts/postgres-paper-disaster-drill.mjs provision
+      - name: Restore PostgreSQL custom archive into fresh database
+        run: |
+          set -Eeuo pipefail
+          docker run --rm -i --network host -e PGPASSWORD=smoke_ci_only postgres:16 \
+            pg_restore -h 127.0.0.1 -U smoke_test -d smoke_restore_ci \
+            --no-owner --exit-on-error < "$RUNNER_TEMP/smoke-ci-backup.dump"
+      - name: Verify exact restored PAPER documents and safe restart idempotency
+        env:
+          SMOKE_TEST_RESTORED_PG_URL: postgresql://smoke_test:smoke_ci_only@127.0.0.1:5432/smoke_restore_ci
+          SMOKE_DRILL_EXPECTED_FILE: ${{ runner.temp }}/paper-drill-expected.json
+        run: node --experimental-strip-types scripts/postgres-paper-disaster-drill.mjs verify
