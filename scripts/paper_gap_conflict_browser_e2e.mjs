@@ -135,8 +135,13 @@ try{
   await b.getByRole('button',{name:'Проверить сохранение'}).waitFor();
   assert.deepEqual((await read(b)).records.BTCUSDT,halt,'SECOND_TAB_NOT_SAME_LEDGER');
 
-  await b.getByRole('button',{
-    name:'Обработать очередной закрытый бар (5 монет)'}).click();
+  const bButton=b.getByRole('button',{
+    name:'Обработать очередной закрытый бар (5 монет)'});
+  if(await bButton.isDisabled()){
+    const errors=await b.getByRole('alert').allTextContents();
+    throw Error('SECOND_TAB_BLOCKED_BEFORE_RACE: '+JSON.stringify(errors));
+  }
+  await bButton.click();
   await Promise.race([bStarted,new Promise((_r,reject)=>
     setTimeout(()=>reject(Error('SECOND_TAB_NOT_FETCHING')),15_000))]);
 
