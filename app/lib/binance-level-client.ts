@@ -11,27 +11,8 @@ export const INTERVALS: Record<Timeframe, string> = {
   "15m": "15m",
   "5m": "5m",
 };
-const INTERVAL_MS: Record<Timeframe, number> = {
-  "1w": 7 * 24 * 60 * 60_000,
-  "1d": 24 * 60 * 60_000,
-  "4h": 4 * 60 * 60_000,
-  "15m": 15 * 60_000,
-  "5m": 5 * 60_000,
-};
-
 export function binanceRestBase(): string {
   return DIRECT_REST;
-}
-
-function parseKline(row: unknown[]): Candle {
-  return {
-    time: Number(row[0]),
-    open: Number(row[1]),
-    high: Number(row[2]),
-    low: Number(row[3]),
-    close: Number(row[4]),
-    volume: Number(row[5]),
-  };
 }
 
 function sleep(milliseconds: number): Promise<void> {
