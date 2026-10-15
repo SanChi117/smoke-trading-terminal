@@ -1,5 +1,29 @@
 # SMOKE Trading OS — Project Status
 
+## 2026-10-15 — P5 TERMINAL INTEGRITY: reject malformed/gapped Binance candle pages before chart/V5/backtest
+
+**User instruction:** continue stabilizing actual SMOKE terminal; postpone Binance USD-M HTTP451 server-region/Railway deployment until later. Do not rewrite frozen V5 or change real-order boundary. Preserve existing AppDeploy Vite deployment and all user data.
+
+### Actual changes
+- `ff003fb4c05cf593df1de6ed65483c8ac538d9f8`: added pure `core/market/binance-kline-page.ts`: validates complete official USD-M 7-column+ rows (OHLCV finite/positive, Binance closeTime, nonnegative volume, strict alignment, no gaps/duplicates); supports UTC Monday 1w and variable-length calendar 1M. Allows most recent forming candle **for chart only**; unchanged V5 analysis continues to exclude unclosed candles.
+- `b3a7ee9cdabdc928ffe7f34e8a71509581093477`: six tests in `tests/binance-kline-page.test.mjs`: valid 5m, missing/duplicate/out-of-order/alignment, malformed row and numeric blanks, weekly Monday, Jan/Feb/Mar month rollover, wrong timeframe.
+- `8b2b33c09bb803ef8d0db155d17b55e40baa87c1`: wired strict page verification to GitHub `app/lib/binance-level-client.ts` instead of `.map(parseKline).filter(Number.isFinite)`, which previously silently removed corrupt rows. Historical backtest remains forward paginated through existing `kline-range-core.ts`, which is unchanged.
+- `22d922741771643402f190bdf2f966119114dcbf`: updated old history test to accept earlier integrity-gate errors `USD_M_KLINE_...` rather than requiring detection only downstream by HISTORY_...; did not relax the actual test's fail-closed semantics.
+- `be6ed8008f74c0a6f7761dc71996abc5df67e6c0`: new `market-kline-integrity-qa` GitHub Actions; run `38673657831` job `116222245392` SUCCESS: **12/12 tests PASS** (six new page invariants plus six existing Binance historical range tests); standalone `--strict` TypeScript PASS. The first intermediate CI run failed because an older test asserted only the old error prefix; fixed and verified.
+- `d7d1845ad0e5aa0bc81940834c019a5f17cded64`: cleaned unused legacy parseKline helper and interval table after CI ESLint warned they were dead code.
+- Applied an equivalent **actual AppDeploy Vite release patch** to `app/lib/binance-level-client.ts`, including strict source marker `BINANCE_USDS_M`, validate payload **before publishing FRESH**, reject malformed/gapped responses without redundant retries and show explicit `USD_M_KLINE_...` errors. New `core/market/binance-kline-page.ts` physically shipped in the live Vite snapshot. Existing `tests/tests.txt` Test 5 expectation updated for visible fail-closed corruption. No change to frozen V5, browser PAPER ledger, trade execution, or backend API.
+- **Actual AppDeploy release snapshot `1792033068745` status `ready`**, live `https://smoke-trading-terminal-0kl792.v2.appdeploy.ai/`; `get_app_status` frontend/backend errors empty, QA snapshot network errors empty. Re-read the published `app/lib/binance-level-client.ts` and `core/market/binance-kline-page.ts` to confirm the strict gate is present and old silent row filter absent. This confirms deployed code and application build, NOT a live Binance market data pass.
+- Enhanced `scripts/terminal_browser_fixture_e2e.mjs` to test published URL using isolated Chromium + synthetic Binance 200 with a deliberately missing ETH 15m row: should DATA ERROR not READY; after valid data returns should recover. First test code revisions had literal regex escaping and newline syntax defects, then a fixture mistakenly corrupted two-candle polling queries. These were **errors in the new test script**, not confirmed product failures; corrected `3281a6cdc3dc5ca9a92f5dadbf870520cafb96bd`, `10e40e36f2ba0d25ff044a0cff0498d685a8e7f8`, `fc6344cbfeebd09fbfa464336f570eebcf776c5b`. Added explicit `node --check` before browser install in `.github/workflows/terminal-browser-fixture-e2e.yml` at `b77a8ca52c692fe2ddcfe16615437428b8318b7a`. **Full Chromium regression of the new corrupt/restore phase was still in progress** (run `38674295630`) when this entry was written; do NOT claim full browser E2E PASS before job logs confirm.
+- Synthetic fixtures test system invariants, **not live Binance**. Chrome tests must remain fully isolated; do not touch owner PAPER journals/keys. HTTP451 egress region and Railway not addressed by design.
+
+### Open / next
+1. Check run `38674295630` browser UI QA, repair any real test/app regressions, only declare PASS on completed Actions logs.
+2. Recheck all branch CI on final code SHA after these commits. Branch PR #88 must remain DRAFT; do not merge over main.
+3. Follow on with post-reload PAPER journal consistency and 5TF stale-response isolation; independently test UI with controlled browser profile, no live trading.
+
+---
+
+
 ## 2026-10-15 — AppDeploy v48: Binance 451 diagnostic UI fix (NOT restored connectivity)
 
 - User reported persistent "ошибка подключения к Бинанс" on published website. Audited actually deployed AppDeploy v47 `1792003179327`, not the GitHub Next/Vinext branch. Found browser `app/lib/binance-level-client.ts` retried HTTP 451/403 4 times and eventually surfaced generic error. Backend `GET /api/market` forwards official USD-M and cannot guarantee access; `backend/pilot-v5.ts` already explicitly reports access restriction.
