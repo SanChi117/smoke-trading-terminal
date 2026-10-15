@@ -1,5 +1,6 @@
 import type { Candle, Timeframe, TimeframeBundle } from "./mtf-level-strategy";
 import {loadClosedKlineHistory} from "./kline-range-core.ts";
+import {validateBinanceUsdMKlinePage} from '../../core/market/binance-kline-page.ts';
 
 import { DIRECT_REST, fetchFuturesPublic } from "./binance-public-transport.ts";
 const WS = "wss://fstream.binance.com/ws";
@@ -58,7 +59,7 @@ export async function fetchKlines(
       });
       if (response.ok) {
         const payload = await response.json() as unknown[][];
-        return payload.map(parseKline).filter((candle) => Object.values(candle).every(Number.isFinite));
+        return validateBinanceUsdMKlinePage(payload,timeframe,Math.min(1500,options.limit??500));
       }
       lastError = new Error(`Binance klines ${response.status}`);
       if (response.status !== 429 && response.status < 500) throw lastError;
