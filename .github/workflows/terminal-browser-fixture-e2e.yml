@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.13.0'
+      - name: Validate browser E2E JavaScript syntax before downloading Chromium
+        run: node --check scripts/terminal_browser_fixture_e2e.mjs
       - name: Prepare isolated Chromium
         run: |
           npm install --no-save playwright@1.56.1
